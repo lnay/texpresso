@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -45,3 +48,6 @@ const char *prot_parse(fz_context *ctx, prot_parser *cp, vstack *stack, const
                        char *input, const char *limit);
 
 #endif // PROT_PARSER_H_
+#ifdef __cplusplus
+}
+#endif

@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -77,3 +80,6 @@ const char *json_parse(fz_context *ctx, json_parser *cp, vstack *stack, const
                        char *input, const char *limit);
 
 #endif // JSON_PARSER_H_
+#ifdef __cplusplus
+}
+#endif

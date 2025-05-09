@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 #ifndef __MUPDF_COMPAT__
 #define __MUPDF_COMPAT__
 
@@ -55,3 +58,6 @@ fz_stream *fz_open_file_ptr_no_close(fz_context *ctx, FILE *file);
 #endif
 
 #endif /*!__MUPDF_COMPAT__*/
+#ifdef __cplusplus
+}
+#endif

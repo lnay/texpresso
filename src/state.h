@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -95,3 +98,6 @@ void log_overwrite(fz_context *ctx, log_t *log, fz_buffer *buf, int start, int l
 bool stat_same(struct stat *st1, struct stat *st2);
 
 #endif /*!STATE_H*/
+#ifdef __cplusplus
+}
+#endif

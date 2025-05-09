@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -37,3 +40,6 @@ void print_backtrace(void);
 #define myabort3(msg, code) myabort_(__FILE__, __LINE__, msg, code)
 
 #endif /* __MYABORT_H__ */
+#ifdef __cplusplus
+}
+#endif

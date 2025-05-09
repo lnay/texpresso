@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -108,3 +111,6 @@ struct txp_engine_class
   }
 
 #endif // GENERIC_ENGINE_H_
+#ifdef __cplusplus
+}
+#endif

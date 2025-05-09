@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -200,3 +203,6 @@ void channel_reset(channel_t *t);
 
 void log_query(FILE *f, query_t *q);
 #endif /*!SPROTOCOL_H*/
+#ifdef __cplusplus
+}
+#endif

@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -61,3 +64,6 @@ const char *sexp_parse(fz_context *ctx, sexp_parser *cp, vstack *stack, const
                        char *input, const char *limit);
 
 #endif // SEXP_PARSER_H_
+#ifdef __cplusplus
+}
+#endif

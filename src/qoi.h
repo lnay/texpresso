@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
 
 Copyright (c) 2021, Dominic Szablewski - https://phoboslab.org
@@ -647,3 +650,6 @@ void *qoi_read(const char *filename, qoi_desc *desc, int channels) {
 
 #endif /* QOI_NO_STDIO */
 #endif /* QOI_IMPLEMENTATION */
+#ifdef __cplusplus
+}
+#endif

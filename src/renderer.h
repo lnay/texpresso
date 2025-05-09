@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -83,3 +86,6 @@ fz_point txp_renderer_screen_to_document(fz_context *ctx, txp_renderer *self, fz
 fz_point txp_renderer_document_to_screen(fz_context *ctx, txp_renderer *self, fz_point pt);
 
 #endif /*!_RENDERER_H_*/
+#ifdef __cplusplus
+}
+#endif

@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -74,3 +77,6 @@ struct persistent_state {
 bool texpresso_main(struct persistent_state *ps);
 
 #endif // DRIVER_H_
+#ifdef __cplusplus
+}
+#endif

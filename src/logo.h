@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -30,3 +33,6 @@
 SDL_Surface *texpresso_logo(void);
 
 #endif /*!LOGO_H*/
+#ifdef __cplusplus
+}
+#endif

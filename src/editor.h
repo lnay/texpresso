@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 #ifndef EDITOR_H_
 #define EDITOR_H_
 
@@ -136,3 +139,6 @@ void editor_synctex(const char *dirname, const char *basename, int basename_len,
 void editor_reset_sync(void);
 
 #endif  // EDITOR_H_
+#ifdef __cplusplus
+}
+#endif

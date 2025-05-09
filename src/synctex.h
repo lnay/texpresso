@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -45,3 +48,6 @@ void synctex_set_target(synctex_t *stx, int current_page, const char *path, int 
 int synctex_find_target(fz_context *ctx, synctex_t *stx, fz_buffer *buf, int *page, int *x, int *y);
 
 #endif // SYNCTEX_H_
+#ifdef __cplusplus
+}
+#endif

@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -43,3 +46,6 @@ void incdvi_find_page_loc(fz_context *ctx, incdvi_t *d, fz_buffer *buf, int page
 float incdvi_tex_scale_factor(incdvi_t *d);
 
 #endif /*!INCDVI_H*/
+#ifdef __cplusplus
+}
+#endif
