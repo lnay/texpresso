@@ -1,6 +1,3 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
 /*
  * MIT License
  *
@@ -31,6 +28,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <variant>
 #include "myabort.h"
 
 typedef struct channel_s channel_t;
@@ -52,64 +50,72 @@ typedef int file_id;
 
 /* QUERIES */
 
-enum query {
-  Q_OPEN = PACK('O','P','E','N'),
-  Q_READ = PACK('R','E','A','D'),
-  Q_WRIT = PACK('W','R','I','T'),
-  Q_CLOS = PACK('C','L','O','S'),
-  Q_SIZE = PACK('S','I','Z','E'),
-  Q_SEEN = PACK('S','E','E','N'),
-  Q_GPIC = PACK('G','P','I','C'),
-  Q_SPIC = PACK('S','P','I','C'),
-  Q_CHLD = PACK('C','H','L','D'),
-};
+namespace query {
+    enum message : uint32_t {
+      Q_OPEN = PACK('O','P','E','N'),
+      Q_READ = PACK('R','E','A','D'),
+      Q_WRIT = PACK('W','R','I','T'),
+      Q_CLOS = PACK('C','L','O','S'),
+      Q_SIZE = PACK('S','I','Z','E'),
+      Q_SEEN = PACK('S','E','E','N'),
+      Q_GPIC = PACK('G','P','I','C'),
+      Q_SPIC = PACK('S','P','I','C'),
+      Q_CHLD = PACK('C','H','L','D'),
+    };
 
-struct pic_cache {
-  int type, page;
-  float bounds[4];
-};
+    struct pic_cache {
+      int type, page;
+      float bounds[4];
+    };
 
-typedef struct {
-  int time;
-  enum query tag;
-  union {
-    struct {
+    struct open {
       file_id fid;
       char *path, *mode;
-    } open;
-    struct {
+    };
+    struct read {
       file_id fid;
       int pos, size;
-    } read;
-    struct {
+    };
+    struct writ {
       file_id fid;
       int pos, size;
       char *buf;
-    } writ;
-    struct {
+    };
+    struct clos {
       file_id fid;
-    } clos;
-    struct {
+    };
+    struct size {
       file_id fid;
-    } size;
-    struct {
+    };
+    struct seen {
       file_id fid;
       int pos;
-    } seen;
-    struct {
-      int fd;
+    };
+    struct chld {
       int pid;
-    } chld;
-    struct {
+      int fd;
+    };
+    struct gpic{
       char *path;
       int type, page;
-    } gpic;
-    struct {
+    };
+    struct spic {
       char *path;
       struct pic_cache cache;
-    } spic;
-  };
-} query_t;
+    };
+
+    using dataa = std::variant<open, read, writ, clos, size, seen, chld, gpic, spic>;
+
+    struct data : public std::variant<open, read, writ, clos, size, seen, chld, gpic, spic> {
+        public:
+        int time;
+        message to_enum();
+        void log(FILE *f);
+        data(int time, dataa param): query::dataa(param), time(time) {};
+    };
+
+    message channel_peek(channel_t *t, int fd);
+}
 
 /* ANSWERS */
 
@@ -187,22 +193,16 @@ typedef struct {
 } ask_t;
 
 /* Functions */
-
 channel_t *channel_new(void);
 void channel_free(channel_t *c);
 
 bool channel_handshake(channel_t *c, int fd);
 bool channel_has_pending_query(channel_t *t, int fd, int timeout);
-enum query channel_peek_query(channel_t *t, int fd);
-bool channel_read_query(channel_t *t, int fd, query_t *r);
+bool channel_read_query(channel_t *t, int fd, query::message *r);
 void channel_write_ask(channel_t *t, int fd, ask_t *a);
 void channel_write_answer(channel_t *t, int fd, answer_t *a);
 void *channel_get_buffer(channel_t *t, size_t n);
 void channel_flush(channel_t *t, int fd);
 void channel_reset(channel_t *t);
 
-void log_query(FILE *f, query_t *q);
 #endif /*!SPROTOCOL_H*/
-#ifdef __cplusplus
-}
-#endif

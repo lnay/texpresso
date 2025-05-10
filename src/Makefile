@@ -33,6 +33,9 @@ $(BUILD)/texpresso-debug: ../scripts/texpresso-debug
 re2c:
 	$(MAKE) -C dvi $@
 
+$(DIR)/sprotocol.o: sprotocol.cpp
+	$(CXX) -c -o $@ -Idvi/ $<
+
 $(DIR)/%.o: %.c
 	$(CC) -c -o $@ -Idvi/ $<
 
