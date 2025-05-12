@@ -223,19 +223,19 @@ bool channel_handshake(channel_t *c, int fd)
 
 #define CASE(K,X) case K##_##X: return STR(X)
 
-const char *query_to_string(enum query q)
+const char *query_to_string(enum query::message q)
 {
   switch (q)
   {
-    CASE(Q,OPEN);
-    CASE(Q,READ);
-    CASE(Q,WRIT);
-    CASE(Q,CLOS);
-    CASE(Q,SIZE);
-    CASE(Q,SEEN);
-    CASE(Q,GPIC);
-    CASE(Q,SPIC);
-    CASE(Q,CHLD);
+    CASE(query::message::Q,OPEN);
+    CASE(query::message::Q,READ);
+    CASE(query::message::Q,WRIT);
+    CASE(query::message::Q,CLOS);
+    CASE(query::message::Q,SIZE);
+    CASE(query::message::Q,SEEN);
+    CASE(query::message::Q,GPIC);
+    CASE(query::message::Q,SPIC);
+    CASE(query::message::Q,CHLD);
   }
 }
 
@@ -460,13 +460,27 @@ bool channel_has_pending_query(channel_t *t, int fd, int timeout)
   return 1;
 }
 
-query::message query::channel_peek(channel_t *t, int fd)
+std::optional<query::message> query::channel_peek(channel_t *t, int fd)
 {
   uint32_t result = read_u32(t, fd);
   if (result == 0)
     abort();
   t->input.pos -= 4;
-  return result;
+  switch (result) {
+    case query::message::Q_CHLD:
+    case query::message::Q_CLOS:
+    case query::message::Q_GPIC:
+    case query::message::Q_OPEN:
+    case query::message::Q_READ:
+    case query::message::Q_SEEN:
+    case query::message::Q_SIZE:
+    case query::message::Q_SPIC:
+    case query::message::Q_WRIT:
+      return static_cast<query::message>(result);
+      break;
+    default:
+      return {};
+  }
 }
 
 std::optional<query::data> channel_read_query(channel_t *t, int fd)

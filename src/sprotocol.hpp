@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <variant>
+#include <optional>
 #include "myabort.h"
 
 typedef struct channel_s channel_t;
@@ -114,7 +115,7 @@ namespace query {
         data(int time, dataa param): query::dataa(param), time(time) {};
     };
 
-    message channel_peek(channel_t *t, int fd);
+    std::optional<message> channel_peek(channel_t *t, int fd);
 }
 
 /* ANSWERS */
