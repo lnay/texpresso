@@ -40,15 +40,15 @@ template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 query::message query::data::to_enum() {
     return(std::visit(overloaded {
-        [](query::open) { return query::message::Q_OPEN; },
-        [](query::read) { return query::message::Q_READ; },
-        [](query::writ) { return query::message::Q_WRIT; },
-        [](query::clos) { return query::message::Q_CLOS; },
-        [](query::size) { return query::message::Q_SIZE; },
-        [](query::seen) { return query::message::Q_SEEN; },
-        [](query::chld) { return query::message::Q_CHLD; },
-        [](query::gpic) { return query::message::Q_GPIC; },
-        [](query::spic) { return query::message::Q_SPIC; },
+        [](query::open) { return query::message::OPEN; },
+        [](query::read) { return query::message::READ; },
+        [](query::writ) { return query::message::WRIT; },
+        [](query::clos) { return query::message::CLOS; },
+        [](query::size) { return query::message::SIZE; },
+        [](query::seen) { return query::message::SEEN; },
+        [](query::chld) { return query::message::CHLD; },
+        [](query::gpic) { return query::message::GPIC; },
+        [](query::spic) { return query::message::SPIC; },
     }, *this));
 };
 
@@ -227,16 +227,26 @@ const char *query_to_string(enum query::message q)
 {
   switch (q)
   {
-    CASE(query::message::Q,OPEN);
-    CASE(query::message::Q,READ);
-    CASE(query::message::Q,WRIT);
-    CASE(query::message::Q,CLOS);
-    CASE(query::message::Q,SIZE);
-    CASE(query::message::Q,SEEN);
-    CASE(query::message::Q,GPIC);
-    CASE(query::message::Q,SPIC);
-    CASE(query::message::Q,CHLD);
+    case query ::message::OPEN:
+      return "OPEN";
+    case query ::message::READ:
+      return "READ";
+    case query ::message::WRIT:
+      return "WRIT";
+    case query ::message::CLOS:
+      return "CLOS";
+    case query ::message::SIZE:
+      return "SIZE";
+    case query ::message::SEEN:
+      return "SEEN";
+    case query ::message::GPIC:
+      return "GPIC";
+    case query ::message::SPIC:
+      return "SPIC";
+    case query ::message::CHLD:
+      return "CHLD";
   }
+  abort();
 }
 
 const char *answer_to_string(enum answer q)
@@ -467,15 +477,15 @@ std::optional<query::message> query::channel_peek(channel_t *t, int fd)
     abort();
   t->input.pos -= 4;
   switch (result) {
-    case query::message::Q_CHLD:
-    case query::message::Q_CLOS:
-    case query::message::Q_GPIC:
-    case query::message::Q_OPEN:
-    case query::message::Q_READ:
-    case query::message::Q_SEEN:
-    case query::message::Q_SIZE:
-    case query::message::Q_SPIC:
-    case query::message::Q_WRIT:
+    case query::message::CHLD:
+    case query::message::CLOS:
+    case query::message::GPIC:
+    case query::message::OPEN:
+    case query::message::READ:
+    case query::message::SEEN:
+    case query::message::SIZE:
+    case query::message::SPIC:
+    case query::message::WRIT:
       return static_cast<query::message>(result);
       break;
     default:
@@ -492,7 +502,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
   int pos = 0;
   switch (tag)
   {
-    case query::Q_OPEN:
+    case query::OPEN:
     {
         int pos_path = read_zstr(t, fd, &pos);
         int pos_mode = read_zstr(t, fd, &pos);
@@ -503,7 +513,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
         };
         return query::data(time, op);
     }
-    case query::Q_READ:
+    case query::READ:
     {
         return query::data(time, query::read {
             .fid = static_cast<file_id>(read_u32(t, fd)),
@@ -511,7 +521,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
             .size = static_cast<file_id>(read_u32(t, fd)),
         });
 }
-    case query::Q_WRIT:
+    case query::WRIT:
     {
         query::writ wr {
             .fid = static_cast<file_id>(read_u32(t, fd)),
@@ -522,21 +532,21 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
         wr.buf = t->buf;
         return query::data(time, wr);
     }
-    case query::Q_CLOS:
+    case query::CLOS:
     {
         query::clos cl {
             .fid = static_cast<file_id>(read_u32(t, fd))
         };
         return query::data(time, cl);
     }
-    case query::Q_SIZE:
+    case query::SIZE:
     {
         query::size si {
             .fid = static_cast<file_id>(read_u32(t, fd))
         };
         return query::data(time, si);
     }
-    case query::Q_SEEN:
+    case query::SEEN:
     {
         query::seen se {
             .fid = static_cast<file_id>(read_u32(t, fd)),
@@ -544,7 +554,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
         };
         return query::data(time, se);
     }
-    case query::Q_GPIC:
+    case query::GPIC:
     {
         int pos_path = read_zstr(t, fd, &pos);
         query::gpic gp {
@@ -554,7 +564,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
         };
         return query::data(time, gp);
     }
-    case query::Q_SPIC:
+    case query::SPIC:
     {
         int pos_path = read_zstr(t, fd, &pos);
         query::spic sp {
@@ -572,7 +582,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
         };
         return query::data(time, sp);
     }
-    case query::Q_CHLD:
+    case query::CHLD:
     {
         query::chld ch {
             .pid = static_cast<file_id>(read_u32(t, fd)),

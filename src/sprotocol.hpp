@@ -53,15 +53,15 @@ typedef int file_id;
 
 namespace query {
     enum message : uint32_t {
-      Q_OPEN = PACK('O','P','E','N'),
-      Q_READ = PACK('R','E','A','D'),
-      Q_WRIT = PACK('W','R','I','T'),
-      Q_CLOS = PACK('C','L','O','S'),
-      Q_SIZE = PACK('S','I','Z','E'),
-      Q_SEEN = PACK('S','E','E','N'),
-      Q_GPIC = PACK('G','P','I','C'),
-      Q_SPIC = PACK('S','P','I','C'),
-      Q_CHLD = PACK('C','H','L','D'),
+      OPEN = PACK('O','P','E','N'),
+      READ = PACK('R','E','A','D'),
+      WRIT = PACK('W','R','I','T'),
+      CLOS = PACK('C','L','O','S'),
+      SIZE = PACK('S','I','Z','E'),
+      SEEN = PACK('S','E','E','N'),
+      GPIC = PACK('G','P','I','C'),
+      SPIC = PACK('S','P','I','C'),
+      CHLD = PACK('C','H','L','D'),
     };
 
     struct pic_cache {
