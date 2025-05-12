@@ -30,7 +30,7 @@ extern "C" {
 
 #include <sys/stat.h>
 #include <mupdf/fitz/buffer.h>
-#include "sprotocol.h"
+#include "sprotocol.hpp"
 
 #define MAX_FILES 1024
 
@@ -51,7 +51,7 @@ typedef struct fileentry_s {
 
   // Cached picture information
   struct pic_cache pic_cache;
-  
+
   // State of the file in the text editor (or NULL if unedited)
   fz_buffer *edit_data;
 

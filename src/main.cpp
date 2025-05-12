@@ -31,7 +31,7 @@
 #include <errno.h>
 #include "incdvi.h"
 #include "renderer.h"
-#include "sprotocol.h"
+#include "sprotocol.hpp"
 #include "engine.h"
 #include "logo.h"
 #include "driver.h"
