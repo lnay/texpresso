@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -109,3 +112,6 @@ enum PDF_OP
 pdf_parse_command(fz_context *ctx, vstack *t, const char **cur, const char *lim);
 
 #endif // PDF_LEXER_H_
+#ifdef __cplusplus
+}
+#endif

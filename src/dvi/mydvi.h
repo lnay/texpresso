@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -380,3 +383,6 @@ inlined void dvi_set_ctm(dvi_state *st, fz_matrix ctm)
 #undef inlined
 
 #endif /*!MYDVI_H*/
+#ifdef __cplusplus
+}
+#endif

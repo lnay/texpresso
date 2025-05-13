@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -147,3 +150,6 @@ static inline bool dvi_is_fontdef(uint8_t opcode)
 }
 
 #endif /*!MYDVI_OPCODES_H*/
+#ifdef __cplusplus
+}
+#endif

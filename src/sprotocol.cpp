@@ -52,6 +52,18 @@ query::message query::data::to_enum() {
     }, *this));
 };
 
+answer::message answer::data::to_enum() const {
+    return(std::visit(overloaded {
+        [](answer::open) { return answer::message::OPEN; },
+        [](answer::read) { return answer::message::READ; },
+        [](answer::size) { return answer::message::SIZE; },
+        [](answer::gpic) { return answer::message::GPIC; },
+        [](answer::done) { return answer::message::DONE; },
+        [](answer::pass) { return answer::message::PASS; },
+        [](answer::fork) { return answer::message::FORK; },
+    }, *this));
+};
+
 ssize_t Channel::read_(int fd, void *data, size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
@@ -134,11 +146,11 @@ bool Channel::read_all(int fd, char *buf, int size)
   return 1;
 }
 
-static void write_all(int fd, const char *buf, int size)
+static void write_all(int fd, const char *buf, size_t size)
 {
   while (size > 0)
   {
-    int n = write(fd, buf, size);
+    ssize_t n = write(fd, buf, size);
     if (n == -1)
     {
       if (errno == EINTR)
@@ -570,7 +582,7 @@ void Channel::write_time(int fd, struct status::time tm)
   write(this, fd, tm.nsec);
 }
 
-void Channel::write_answer(int fd, answer::data &a)
+void Channel::write_answer(int fd, const answer::data &a)
 {
   // if (LOG)
   // {

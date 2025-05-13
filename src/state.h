@@ -1,6 +1,3 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
 /*
  * MIT License
  *
@@ -29,8 +26,12 @@ extern "C" {
 #define STATE_H
 
 #include <sys/stat.h>
-#include <mupdf/fitz/buffer.h>
 #include "sprotocol.hpp"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include <mupdf/fitz/buffer.h>
 
 #define MAX_FILES 1024
 
@@ -96,8 +97,8 @@ void log_filecell(fz_context *ctx, log_t *log, filecell_t *cell);
 void log_overwrite(fz_context *ctx, log_t *log, fz_buffer *buf, int start, int len);
 
 bool stat_same(struct stat *st1, struct stat *st2);
-
-#endif /*!STATE_H*/
 #ifdef __cplusplus
 }
 #endif
+
+#endif /*!STATE_H*/

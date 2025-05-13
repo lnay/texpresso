@@ -307,7 +307,8 @@ static void prepare_texture(fz_context *ctx, txp_renderer *self)
     self->st = (texture_state){
         .w = pw,
         .h = ph,
-        0,
+        .rect = {0},
+        // 0,
     };
   }
 }
@@ -356,7 +357,7 @@ static void render_rect(fz_context *ctx, txp_renderer *self, fz_rect bounds, voi
   fz_colorspace *csp = fz_device_bgr(ctx);
   if (pitch == 0)
     pitch = fz_irect_width(r) * 3;
-  fz_pixmap *pm = fz_new_pixmap_with_data(ctx, csp, fz_irect_width(r), fz_irect_height(r), NULL, 0, pitch, pixels);
+  fz_pixmap *pm = fz_new_pixmap_with_data(ctx, csp, fz_irect_width(r), fz_irect_height(r), NULL, 0, pitch, (unsigned char*) pixels);
   fz_matrix ctm;
   ctm = fz_translate(-x, -y);
   ctm = fz_pre_scale(ctm, scale, scale);

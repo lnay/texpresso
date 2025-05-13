@@ -1,6 +1,3 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
 /*
  * MIT License
  *
@@ -77,6 +74,10 @@ struct txp_engine_class
   void (*notify_file_changes)(txp_engine *self, fz_context *ctx, fileentry_t *entry, int offset);
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define TXP_ENGINE_DEF_CLASS                                                \
   static void engine_destroy(txp_engine *_self, fz_context *ctx);           \
   static fz_display_list *engine_render_page(txp_engine *_self,             \
@@ -98,19 +99,19 @@ struct txp_engine_class
   static struct txp_engine_class _class = {                                 \
       .destroy = engine_destroy,                                            \
       .step = engine_step,                                                  \
+      .begin_changes = engine_begin_changes,                                \
+      .detect_changes = engine_detect_changes,                              \
+      .end_changes = engine_end_changes,                                    \
       .page_count = engine_page_count,                                      \
       .render_page = engine_render_page,                                    \
       .get_status = engine_get_status,                                      \
       .scale_factor = engine_scale_factor,                                  \
       .synctex = engine_synctex,                                            \
       .find_file = engine_find_file,                                        \
-      .begin_changes = engine_begin_changes,                                \
-      .detect_changes = engine_detect_changes,                              \
-      .end_changes = engine_end_changes,                                    \
       .notify_file_changes = engine_notify_file_changes,                    \
   }
-
-#endif // GENERIC_ENGINE_H_
 #ifdef __cplusplus
 }
 #endif
+
+#endif // GENERIC_ENGINE_H_

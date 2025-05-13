@@ -140,7 +140,7 @@ struct repaint_on_resize_env
 
 static int repaint_on_resize(void *data, SDL_Event *event)
 {
-  struct repaint_on_resize_env *env = data;
+  struct repaint_on_resize_env *env = static_cast<repaint_on_resize_env*>(data);
   if (event->type == SDL_WINDOWEVENT &&
       event->window.event == SDL_WINDOWEVENT_RESIZED &&
       SDL_GetWindowFromID(event->window.windowID) == env->ui->window)
@@ -355,7 +355,7 @@ static void ui_mouse_wheel(fz_context *ctx, ui_state *ui, float dx, float dy, in
 
 static int SDLCALL poll_stdin_thread_main(void *data)
 {
-  int *pipes = data;
+  int *pipes = (int*) data;
   char c;
   int n;
 
@@ -565,7 +565,7 @@ static const char *relative_path(const char *path, const char *dir, int *go_up)
 
 static int find_diff(const fz_buffer *buf, const void *data, int size)
 {
-  const unsigned char *ptr = data;
+  const unsigned char *ptr = (const unsigned char*) data;
   int i, len = fz_mini(buf->len, size);
   for (i = 0; i < len && buf->data[i] == ptr[i]; ++i);
   fprintf(stderr, "i:%d len:%d size:%d\n", i, (int)buf->len, size);
@@ -677,7 +677,7 @@ static void realize_change(struct persistent_state *ps,
 
   int offset = op->span.offset, remove = op->span.remove, length = op->length;
 
-  if (op->base == BASE_LINE)
+  if (op->base == editor_change::BASE_LINE)
   {
     // Compute byte offsets from line offsets
     int line = offset, count = remove;
@@ -716,7 +716,7 @@ static void realize_change(struct persistent_state *ps,
 
     remove -= offset;
   }
-  else if (op->base == BASE_RANGE)
+  else if (op->base == editor_change::BASE_RANGE)
   {
     // Compute byte offsets from line offsets
     int line = op->range.start_line;
@@ -895,7 +895,7 @@ static void interpret_open(struct persistent_state *ps,
   else
   {
     fprintf(stderr, "[command] open %s: new file\n", path);
-    e->edit_data = fz_new_buffer_from_copied_data(ps->ctx, data, size);
+    e->edit_data = fz_new_buffer_from_copied_data(ps->ctx, (const unsigned char *) data, size);
     if (e->fs_data)
       changed = find_diff(e->fs_data, data, size);
   }
@@ -1063,7 +1063,7 @@ static void interpret_command(struct persistent_state *ps,
       break;
 
     case EDIT_STAY_ON_TOP:
-      SDL_SetWindowAlwaysOnTop(ui->window, cmd.stay_on_top.status);
+      SDL_SetWindowAlwaysOnTop(ui->window, (SDL_bool) cmd.stay_on_top.status);
       fprintf(stderr, "[command] stay-on-top %d\n", cmd.stay_on_top.status);
       break;
 
@@ -1341,13 +1341,13 @@ bool texpresso_main(struct persistent_state *ps)
           case SDLK_b:
             SDL_SetWindowBordered(
                 ui->window,
-                !!(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_BORDERLESS));
+                (SDL_bool) !!(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_BORDERLESS));
             break;
 
           case SDLK_t:
             SDL_SetWindowAlwaysOnTop(
                 ui->window,
-                !(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_ALWAYS_ON_TOP));
+                (SDL_bool) !(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_ALWAYS_ON_TOP));
             break;
 
           case SDLK_c:

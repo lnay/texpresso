@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -158,3 +161,6 @@ static uint32_t read_uB(const uint8_t **buf, int n)
 }
 
 #endif /*__INTCODEC_H__*/
+#ifdef __cplusplus
+}
+#endif

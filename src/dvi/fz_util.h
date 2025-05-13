@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -52,3 +55,6 @@ static inline char *dtx_strndup(fz_context *ctx, const void *buf, size_t len)
 }
 
 #endif /*!FZ_UTIL_H*/
+#ifdef __cplusplus
+}
+#endif

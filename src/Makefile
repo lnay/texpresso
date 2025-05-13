@@ -33,13 +33,16 @@ $(BUILD)/texpresso-debug: ../scripts/texpresso-debug
 re2c:
 	$(MAKE) -C dvi $@
 
-$(DIR)/main.o: main.cpp
-	$(CXX) -c -o $@ -Idvi/ $<
+# $(DIR)/main.o: main.cpp
+# 	$(CXX) -c -o $@ -Idvi/ $<
 
-$(DIR)/sprotocol.o: sprotocol.cpp
-	$(CXX) -c -o $@ -Idvi/ $<
+# $(DIR)/sprotocol.o: sprotocol.cpp
+# 	$(CXX) -c -o $@ -Idvi/ $<
 
-$(DIR)/%.o: %.c
+$(DIR)/json_parser.o: json_parser.c
+	$(CC) -c -o $@ -Idvi/ $<
+
+$(DIR)/%.o: %.cpp
 	$(CC) -c -o $@ -Idvi/ $<
 
 $(DIR)/libmydvi.a: $(wildcard dvi/*.*)

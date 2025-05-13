@@ -52,6 +52,11 @@ typedef int file_id;
 
 /* QUERIES */
 
+struct pic_cache {
+  int type, page;
+  float bounds[4];
+};
+
 namespace query {
     enum message : uint32_t {
       OPEN = PACK('O','P','E','N'),
@@ -63,11 +68,6 @@ namespace query {
       GPIC = PACK('G','P','I','C'),
       SPIC = PACK('S','P','I','C'),
       CHLD = PACK('C','H','L','D'),
-    };
-
-    struct pic_cache {
-      int type, page;
-      float bounds[4];
     };
 
     struct open {
@@ -149,8 +149,8 @@ namespace answer {
     using dataa = std::variant<open, read, size, gpic, done, pass, fork>;
 
     struct data : public dataa {
-        data(dataa params): dataa(params) {}
-        message to_enum();
+        data(dataa params): dataa(params) {};
+        message to_enum() const;
         void log(FILE *f);
     };
 }
@@ -235,7 +235,7 @@ class Channel
   void flush(int fd);
   void reset();
   std::optional<query::data> read_query(int fd);
-  void write_answer(int fd, answer::data &a);
+  void write_answer(int fd, const answer::data &a);
   void write_ask(int fd, ask_t *a);
   bool has_pending_query(int fd, int timeout);
   bool handshake(int fd);

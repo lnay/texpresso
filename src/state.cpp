@@ -23,7 +23,9 @@
  */
 
 #include <stdlib.h>
+#include <cstdint>
 #include "state.h"
+#include "sprotocol.hpp"
 #include "string.h"
 #include "mupdf_compat.h"
 #include "dvi/fz_util.h"
@@ -36,8 +38,18 @@
 enum log_action {
   LOG_ENTRY = 0x42,
   LOG_CELL,
-  LOG_OVERWRITE
+  LOG_OVERWRITE,
 };
+
+static std::optional<log_action> bin_to_log_action(uint32_t x) {
+  switch (x) {
+    case log_action::LOG_ENTRY:
+    case log_action::LOG_CELL:
+    case log_action::LOG_OVERWRITE:
+        return static_cast<log_action>(x);
+    default: return {};
+  }
+}
 
 struct log_s
 {
@@ -145,7 +157,7 @@ static enum log_action pop_action(fz_buffer *buf)
 {
   uint8_t b;
   POP_VALUE(buf, b);
-  return b;
+  return bin_to_log_action(b).value();
 }
 
 static void log_pop(fz_context *ctx, log_t *log)

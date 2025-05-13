@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -69,3 +72,6 @@ bool dvi_init_special(fz_context *ctx, dvi_context *dc, dvi_state *st, const cha
 void dvi_prescan_special(const char *ptr, const char *lim, float *width, float *height, bool *landscape);
 
 #endif /*!DVI_INTERP_H*/
+#ifdef __cplusplus
+}
+#endif

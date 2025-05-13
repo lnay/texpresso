@@ -114,8 +114,8 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
+                .base = editor_change::BASE_BYTE,
                 .length = val_string_length(ctx, stack, data),
-                .base = BASE_BYTE,
                 .span =
                     {
                         .offset = val_number(ctx, offset),
@@ -142,8 +142,8 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
+                .base = editor_change::BASE_LINE,
                 .length = val_string_length(ctx, stack, data),
-                .base = BASE_LINE,
                 .span =
                     {
                         .offset = val_number(ctx, offset),
@@ -172,8 +172,8 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
+                .base = editor_change::BASE_RANGE,
                 .length = val_string_length(ctx, stack, data),
-                .base = BASE_RANGE,
                 .range =
                     {
                         .start_line = val_number(ctx, start_line),
@@ -502,7 +502,7 @@ void editor_synctex(const char *dirname,
     output_data_string(stdout, dirname, strlen(dirname));
     output_data_string(stdout, "/", 1);
   }
-  output_data_string(stdout, (const void *)basename, basename_len);
+  output_data_string(stdout, basename, basename_len);
   switch (protocol)
   {
     case EDITOR_SEXP: fprintf(stdout, "\" %d %d)\n", line, column); break;

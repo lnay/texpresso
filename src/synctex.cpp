@@ -242,7 +242,7 @@ static const uint8_t *string_parse_int(const uint8_t *string, int *i)
 
 static const uint8_t *string_skip_prefix(const uint8_t *string, const char *prefix)
 {
-  const uint8_t *ptr = (void *)prefix;
+  const uint8_t *ptr = (uint8_t *)prefix;
   while (*ptr)
   {
     if (*ptr == *string)
@@ -473,7 +473,7 @@ parse_line(const uint8_t *ptr, struct record *r)
 
   int has_link = 0, has_point = 0, has_size = 0, has_width = 0;
 
-  *r = (struct record){0, };
+  *r = (struct record){};
 
   switch (*ptr)
   {
@@ -591,7 +591,7 @@ parse_tree(synctex_t *stx, fz_buffer *buf, const uint8_t *ptr, int x, int y, str
   int nest = 0;
   struct size saved[256];
 
-  struct record r = {0,};
+  struct record r = {};
   while ((ptr = parse_line(ptr, &r)))
   {
     fz_irect rect;
@@ -761,8 +761,8 @@ static bool synctex_find_input(fz_context *ctx, synctex_t *stx, fz_buffer *buf)
       continue;
     }
 
-    int page = 0, 
-      pages = synctex_page_count(stx), 
+    int page = 0,
+      pages = synctex_page_count(stx),
       offset = int_abs(stx->input_off.ptr[stx->input_tag]);
     while (page < pages && stx->page_off.ptr[page * 2 + 1] < offset)
       page += 1;
@@ -794,7 +794,7 @@ synctex_backscan_page(fz_context *ctx, synctex_t *stx, fz_buffer *buf, int page,
   int line = stx->target_line;
   const uint8_t *ptr = synctex_page_pointer(ctx, stx, buf, page);
 
-  struct record r = {0,}, r0;
+  struct record r = {}, r0;
   r0.link.tag = -1;
 
   int had_record = 0;
