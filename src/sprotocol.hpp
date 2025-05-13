@@ -229,11 +229,6 @@ class Channel
   int read_zstr(int fd, int *pos);
   bool read_bytes(int fd, int pos, int size);
   void write_bytes(int fd, void *buf, int size);
-  bool try_read_u32(int fd, uint32_t *tag);
-  uint32_t read_u32(int fd);
-  void write_u32(int fd, uint32_t u);
-  float read_f32(int fd);
-  void write_f32(int fd, float f);
   void write_time(int fd, struct status::time tm);
 
   public:
@@ -248,6 +243,9 @@ class Channel
   void *get_buffer(size_t n);
   Channel();
   ~Channel();
+
+  template<typename T> friend std::optional<T> read(Channel *t, int fd);
+  template<typename T> friend void write(Channel *t, int fd, T value);
 };
 
 #endif /*!SPROTOCOL_H*/

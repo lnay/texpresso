@@ -339,47 +339,20 @@ void Channel::write_bytes(int fd, void *buf, int size)
   }
 }
 
-bool Channel::try_read_u32(int fd, uint32_t *tag)
+template<typename T> std::optional<T> read(Channel *t, int fd)
 {
-  if (!this->refill_at_least(fd, 4))
-    return 0;
-  memcpy(tag, this->input.buffer + this->input.pos, 4);
-  this->input.pos += 4;
-  return 1;
-}
+  if (!t->refill_at_least(fd, sizeof(T))) return 0;
 
-uint32_t Channel::read_u32(int fd)
-{
-  int avail = this->input.len - this->input.pos;
-
-  if (!this->refill_at_least(fd, 4)) return 0;
-
-  uint32_t tag;
-  memcpy(&tag, this->input.buffer + this->input.pos, 4);
-  this->input.pos += 4;
-
-  return tag;
-}
-
-void Channel::write_u32(int fd, uint32_t u)
-{
-  this->write_bytes(fd, &u, 4);
-}
-
-float Channel::read_f32(int fd)
-{
-  if (!this->refill_at_least(fd, 4)) return 0;
-
-  float f;
-  memcpy(&f, this->input.buffer + this->input.pos, 4);
-  this->input.pos += 4;
+  T f;
+  memcpy(&f, t->input.buffer + t->input.pos, sizeof(T));
+  t->input.pos += sizeof(T);
 
   return f;
 }
 
-void Channel::write_f32(int fd, float f)
+template<typename T> void write(Channel *t, int fd, T value)
 {
-  this->write_bytes(fd, &f, 4);
+  t->write_bytes(fd, &value, sizeof(T));
 }
 
 void query::data::log(FILE *f)
@@ -444,7 +417,7 @@ bool Channel::has_pending_query(int fd, int timeout)
 
 std::optional<query::message> Channel::peek(int fd)
 {
-  uint32_t result = this->read_u32(fd);
+  uint32_t result = read<uint32_t>(this, fd).value();
   if (result == 0) abort();
   this->input.pos -= 4;
   switch (result) {
@@ -467,9 +440,12 @@ std::optional<query::message> Channel::peek(int fd)
 std::optional<query::data> Channel::read_query(int fd)
 {
   uint32_t tag;
-
-  if (!this->try_read_u32(fd, &tag)) return {};
-  int time = this->read_u32(fd);
+  try {
+    tag = read<uint32_t>(this, fd).value();
+  } catch (std::bad_optional_access) {
+    return {};
+  }
+  int time = read<int>(this, fd).value();
   int pos = 0;
   switch (tag)
   {
@@ -478,7 +454,7 @@ std::optional<query::data> Channel::read_query(int fd)
         int pos_path = this->read_zstr(fd, &pos);
         int pos_mode = this->read_zstr(fd, &pos);
         query::open op = {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
+            .fid = read<file_id>(this, fd).value(),
             .path = this->buf + pos_path,
             .mode = this->buf + pos_mode,
         };
@@ -487,17 +463,17 @@ std::optional<query::data> Channel::read_query(int fd)
     case query::READ:
     {
         return query::data(time, query::read {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
-            .size = static_cast<file_id>(this->read_u32(fd)),
+            .fid = read<file_id>(this, fd).value(),
+            .pos = read<int>(this, fd).value(),
+            .size = read<int>(this, fd).value(),
         });
     }
     case query::WRIT:
     {
         query::writ wr {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
-            .size = static_cast<file_id>(this->read_u32(fd)),
+            .fid = read<file_id>(this, fd).value(),
+            .pos = read<int>(this, fd).value(),
+            .size = read<int>(this, fd).value(),
         };
         if (!this->read_bytes(fd, 0, wr.size)) return {};
         wr.buf = this->buf;
@@ -506,22 +482,22 @@ std::optional<query::data> Channel::read_query(int fd)
     case query::CLOS:
     {
         query::clos cl {
-            .fid = static_cast<file_id>(this->read_u32(fd))
+            .fid = read<file_id>(this, fd).value()
         };
         return query::data(time, cl);
     }
     case query::SIZE:
     {
         query::size si {
-            .fid = static_cast<file_id>(this->read_u32(fd))
+            .fid = read<file_id>(this, fd).value()
         };
         return query::data(time, si);
     }
     case query::SEEN:
     {
         query::seen se {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
+            .fid = read<file_id>(this, fd).value(),
+            .pos = read<file_id>(this, fd).value(),
         };
         return query::data(time, se);
     }
@@ -530,8 +506,8 @@ std::optional<query::data> Channel::read_query(int fd)
         int pos_path = this->read_zstr(fd, &pos);
         query::gpic gp {
             .path = this->buf + pos_path,
-            .type = static_cast<file_id>(this->read_u32(fd)),
-            .page = static_cast<file_id>(this->read_u32(fd)),
+            .type = read<file_id>(this, fd).value(),
+            .page = read<file_id>(this, fd).value(),
         };
         return query::data(time, gp);
     }
@@ -541,13 +517,13 @@ std::optional<query::data> Channel::read_query(int fd)
         query::spic sp {
             .path = this->buf + pos_path,
             .cache = {
-                .type = static_cast<file_id>(this->read_u32(fd)),
-                .page = static_cast<file_id>(this->read_u32(fd)),
+                .type = read<file_id>(this, fd).value(),
+                .page = read<file_id>(this, fd).value(),
                 .bounds = {
-                    this->read_f32(fd),
-                    this->read_f32(fd),
-                    this->read_f32(fd),
-                    this->read_f32(fd),
+                    read<float>(this, fd).value(),
+                    read<float>(this, fd).value(),
+                    read<float>(this, fd).value(),
+                    read<float>(this, fd).value(),
                 }
             }
         };
@@ -556,7 +532,7 @@ std::optional<query::data> Channel::read_query(int fd)
     case query::CHLD:
     {
         query::chld ch {
-            .pid = static_cast<file_id>(this->read_u32(fd)),
+            .pid = read<file_id>(this, fd).value(),
             .fd = this->passed_fd,
         };
         if (ch.fd == -1) abort();
@@ -580,7 +556,7 @@ std::optional<query::data> Channel::read_query(int fd)
 
 void Channel::write_ask(int fd, ask_t *a)
 {
-  this->write_u32(fd, a->tag);
+  write(this, fd, a->tag);
   switch (a->tag)
   {
     case C_FLSH: break;
@@ -590,8 +566,8 @@ void Channel::write_ask(int fd, ask_t *a)
 
 void Channel::write_time(int fd, struct status::time tm)
 {
-  this->write_u32(fd, tm.sec);
-  this->write_u32(fd, tm.nsec);
+  write(this, fd, tm.sec);
+  write(this, fd, tm.nsec);
 }
 
 void Channel::write_answer(int fd, answer::data &a)
@@ -603,27 +579,27 @@ void Channel::write_answer(int fd, answer::data &a)
   //   else
   //     fprintf(stderr, "[info] -> %s\n", answer_to_string(a->tag));
   // }
-  this->write_u32(fd, static_cast<uint32_t>(a.to_enum()));
+  write(this, fd, static_cast<uint32_t>(a.to_enum()));
   std::visit(overloaded {
       [](answer::done _) { return; },
       [](answer::pass _) { return; },
       [](answer::fork _) { return; },
       [fd, this](answer::read r) {
-          this->write_u32(fd, r.size);
+          write(this, fd, r.size);
           this->write_bytes(fd, this->buf, r.size);
       },
       [fd, this](answer::size s) {
-          this->write_u32(fd, s.size);
+          write(this, fd, s.size);
       },
       [fd, this](answer::open o) {
-          this->write_u32(fd, o.size);
+          write(this, fd, o.size);
           this->write_bytes(fd, this->buf, o.size);
       },
       [fd, this](answer::gpic g) {
-          this->write_f32(fd, g.bounds[0]);
-          this->write_f32(fd, g.bounds[1]);
-          this->write_f32(fd, g.bounds[2]);
-          this->write_f32(fd, g.bounds[3]);
+          write(this, fd, g.bounds[0]);
+          write(this, fd, g.bounds[1]);
+          write(this, fd, g.bounds[2]);
+          write(this, fd, g.bounds[3]);
       },
   }, a);
 }
