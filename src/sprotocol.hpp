@@ -28,14 +28,15 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <cstdint>
 #include <variant>
 #include <optional>
 #include "myabort.h"
 
-typedef struct channel_s channel_t;
 typedef int file_id;
 
 #define LOG 0
+#define BUF_SIZE 4096
 
 #define LEN(txt) (sizeof(txt)-1)
 #define STR(X) #X
@@ -114,21 +115,45 @@ namespace query {
         void log(FILE *f);
         data(int time, dataa param): query::dataa(param), time(time) {};
     };
-
-    std::optional<message> channel_peek(channel_t *t, int fd);
 }
 
 /* ANSWERS */
 
-enum answer {
-  A_DONE = PACK('D','O','N','E'),
-  A_PASS = PACK('P','A','S','S'),
-  A_SIZE = PACK('S','I','Z','E'),
-  A_READ = PACK('R','E','A','D'),
-  A_FORK = PACK('F','O','R','K'),
-  A_OPEN = PACK('O','P','E','N'),
-  A_GPIC = PACK('G','P','I','C'),
-};
+namespace answer {
+    enum message : uint32_t {
+        DONE = PACK('D','O','N','E'),
+        PASS = PACK('P','A','S','S'),
+        SIZE = PACK('S','I','Z','E'),
+        READ = PACK('R','E','A','D'),
+        FORK = PACK('F','O','R','K'),
+        OPEN = PACK('O','P','E','N'),
+        GPIC = PACK('G','P','I','C'),
+    };
+
+    struct size {
+      int size;
+    };
+    struct read {
+      int size;
+    };
+    struct open {
+      int size;
+    };
+    struct gpic {
+      float bounds[4];
+    };
+    struct done {};
+    struct pass {};
+    struct fork {};
+
+    using dataa = std::variant<open, read, size, gpic, done, pass, fork>;
+
+    struct data : public dataa {
+        data(dataa params): dataa(params) {}
+        message to_enum();
+        void log(FILE *f);
+    };
+}
 
 enum accs_answer {
   ACCS_PASS = 0,
@@ -137,40 +162,25 @@ enum accs_answer {
   ACCS_EACCES = 3,
 };
 
-struct stat_time {
-  uint32_t sec, nsec;
-};
+namespace status {
+    struct time {
+        uint32_t sec, nsec;
+    };
 
-struct stat_answer {
-  uint32_t dev, ino;
-  uint32_t mode;
-  uint32_t nlink;
-  uint32_t uid, gid;
-  uint32_t rdev;
-  uint32_t size;
-  uint32_t blksize, blocks;
-  struct stat_time atime, ctime, mtime;
-};
+    struct answer {
+        uint32_t dev, ino;
+        uint32_t mode;
+        uint32_t nlink;
+        uint32_t uid, gid;
+        uint32_t rdev;
+        uint32_t size;
+        uint32_t blksize, blocks;
+        struct time atime, ctime, mtime;
+    };
+}
 
 #define READ_FORK (-1)
 
-typedef struct {
-  enum answer tag;
-  union {
-    struct {
-      int size;
-    } size;
-    struct {
-      int size;
-    } read;
-    struct {
-      int size;
-    } open;
-    struct {
-      float bounds[4];
-    } gpic;
-  };
-} answer_t;
 
 /* "ASK" :P */
 
@@ -193,17 +203,51 @@ typedef struct {
   };
 } ask_t;
 
-/* Functions */
-channel_t *channel_new(void);
-void channel_free(channel_t *c);
+/* channel */
 
-bool channel_handshake(channel_t *c, int fd);
-bool channel_has_pending_query(channel_t *t, int fd, int timeout);
-bool channel_read_query(channel_t *t, int fd, query::message *r);
-void channel_write_ask(channel_t *t, int fd, ask_t *a);
-void channel_write_answer(channel_t *t, int fd, answer_t *a);
-void *channel_get_buffer(channel_t *t, size_t n);
-void channel_flush(channel_t *t, int fd);
-void channel_reset(channel_t *t);
+class Channel
+{
+  struct {
+    char buffer[BUF_SIZE]; // replace with string?
+    int pos, len;
+  } input;
+  struct {
+    char buffer[BUF_SIZE]; // replace with string?
+    int pos;
+  } output;
+  int passed_fd;
+  char *buf; // replace with string?
+  int buf_size;
+
+  ssize_t read_(int fd, void *data, size_t len);
+  int buffered_read_at_least(int fd, char *buf, int atleast, int size);
+  bool read_all(int fd, char *buf, int size);
+  void cflush(int fd);
+  bool refill_at_least(int fd, int at_least);
+  void resize_buf();
+  int cgetc(int fd);
+  int read_zstr(int fd, int *pos);
+  bool read_bytes(int fd, int pos, int size);
+  void write_bytes(int fd, void *buf, int size);
+  bool try_read_u32(int fd, uint32_t *tag);
+  uint32_t read_u32(int fd);
+  void write_u32(int fd, uint32_t u);
+  float read_f32(int fd);
+  void write_f32(int fd, float f);
+  void write_time(int fd, struct status::time tm);
+
+  public:
+  void flush(int fd);
+  void reset();
+  std::optional<query::data> read_query(int fd);
+  void write_answer(int fd, answer::data &a);
+  void write_ask(int fd, ask_t *a);
+  bool has_pending_query(int fd, int timeout);
+  bool handshake(int fd);
+  std::optional<query::message> peek(int fd);
+  void *get_buffer(size_t n);
+  Channel();
+  ~Channel();
+};
 
 #endif /*!SPROTOCOL_H*/

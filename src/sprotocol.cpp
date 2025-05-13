@@ -29,11 +29,11 @@
 #include <errno.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <cstdint>
 #include <variant>
 #include <optional>
 
 #define PACK(a,b,c,d) ((d << 24) | (c << 16) | (b << 8) | a)
-#define BUF_SIZE 4096
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
@@ -52,22 +52,7 @@ query::message query::data::to_enum() {
     }, *this));
 };
 
-struct channel_s
-{
-  struct {
-    char buffer[BUF_SIZE];
-    int pos, len;
-  } input;
-  struct {
-    char buffer[BUF_SIZE];
-    int pos;
-  } output;
-  int passed_fd;
-  char *buf;
-  int buf_size;
-};
-
-static ssize_t read_(channel_t *t, int fd, void *data, size_t len)
+ssize_t Channel::read_(int fd, void *data, size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
   int32_t pid;
@@ -104,16 +89,16 @@ static ssize_t read_(channel_t *t, int fd, void *data, size_t len)
     if (nfds != 1)
       abort();
 
-    if (t->passed_fd != -1)
+    if (this->passed_fd != -1)
       abort();
       //close(t->passed_fd);
-    t->passed_fd = fds0[0];
+    this->passed_fd = fds0[0];
   }
 
   return recvd;
 }
 
-static int buffered_read_at_least(channel_t *t, int fd, char *buf, int atleast, int size)
+int Channel::buffered_read_at_least(int fd, char *buf, int atleast, int size)
 {
   int n;
   char *org = buf, *ok = buf + atleast;
@@ -121,7 +106,7 @@ static int buffered_read_at_least(channel_t *t, int fd, char *buf, int atleast, 
 
   while (1)
   {
-    n = read_(t, fd, buf, size);
+    n = this->read_(fd, buf, size);
     if (n == -1)
       pabort();
     else if (n == 0)
@@ -135,11 +120,11 @@ static int buffered_read_at_least(channel_t *t, int fd, char *buf, int atleast, 
   return (buf - org);
 }
 
-static bool read_all(channel_t *t, int fd, char *buf, int size)
+bool Channel::read_all(int fd, char *buf, int size)
 {
   while (size > 0)
   {
-    int n = read_(t, fd, buf, size);
+    int n = this->read_(fd, buf, size);
     if (n == 0)
       return 0;
 
@@ -171,35 +156,35 @@ static void write_all(int fd, const char *buf, int size)
   }
 }
 
-static void cflush(channel_t *c, int fd)
+void Channel::cflush(int fd)
 {
-  int pos = c->output.pos;
+  int pos = this->output.pos;
   if (pos == 0) return;
-  write_all(fd, c->output.buffer, pos);
-  c->output.pos = 0;
+  write_all(fd, this->output.buffer, pos);
+  this->output.pos = 0;
 }
 
-static bool refill_at_least(channel_t *c, int fd, int at_least)
+bool Channel::refill_at_least(int fd, int at_least)
 {
-  int avail = (c->input.len - c->input.pos);
+  int avail = (this->input.len - this->input.pos);
   if (avail >= at_least)
     return 1;
 
-  memmove(c->input.buffer, c->input.buffer + c->input.pos, avail);
+  memmove(this->input.buffer, this->input.buffer + this->input.pos, avail);
 
-  c->input.pos = 0;
+  this->input.pos = 0;
   while (avail < at_least)
   {
-    int n = read_(c, fd, c->input.buffer + avail, BUF_SIZE - avail);
+    int n = this->read_(fd, this->input.buffer + avail, BUF_SIZE - avail);
     if (n == 0)
     {
-      c->input.len = avail;
+      this->input.len = avail;
       return 0;
     }
     avail += n;
   }
 
-  c->input.len = avail;
+  this->input.len = avail;
   return 1;
 }
 
@@ -208,20 +193,18 @@ static bool refill_at_least(channel_t *c, int fd, int at_least)
 #define HND_SERVER "TEXPRESSOS01"
 #define HND_CLIENT "TEXPRESSOC01"
 
-bool channel_handshake(channel_t *c, int fd)
+bool Channel::handshake(int fd)
 {
   char answer[LEN(HND_CLIENT)];
   write_all(fd, HND_SERVER, LEN(HND_SERVER));
-  if (!read_all(c, fd, answer, LEN(HND_CLIENT)))
+  if (!this->read_all(fd, answer, LEN(HND_CLIENT)))
     return 0;
-  c->input.len = c->input.pos = 0;
-  c->output.pos = 0;
+  this->input.len = this->input.pos = 0;
+  this->output.pos = 0;
   return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
 }
 
 /* PROTOCOL DEFINITION */
-
-#define CASE(K,X) case K##_##X: return STR(X)
 
 const char *query_to_string(enum query::message q)
 {
@@ -249,162 +232,154 @@ const char *query_to_string(enum query::message q)
   abort();
 }
 
-const char *answer_to_string(enum answer q)
+const char *answer_to_string(answer::message q)
 {
   switch (q)
   {
-    CASE(A,DONE);
-    CASE(A,PASS);
-    CASE(A,SIZE);
-    CASE(A,READ);
-    CASE(A,FORK);
-    CASE(A,OPEN);
-    CASE(A,GPIC);
+    case answer::DONE:
+      return "DONE";
+    case answer::PASS:
+      return "PASS";
+    case answer::SIZE:
+      return "SIZE";
+    case answer::READ:
+      return "READ";
+    case answer::FORK:
+      return "FORK";
+    case answer::OPEN:
+      return "OPEN";
+    case answer::GPIC:
+      return "GPIC";
   }
+  abort();
 }
 
 const char *ask_to_string(enum ask q)
 {
   switch (q)
   {
-    CASE(C,FLSH);
+    case C_FLSH: return "FLSH";
   }
+  abort();
 }
 
-channel_t *channel_new(void)
-{
-  channel_t *c = new channel_t;
-  if (!c) mabort();
-  c->buf = new char[256];
-  if (!c->buf) mabort();
-  c->buf_size = 256;
-  c->passed_fd = -1;
-  return c;
-}
+Channel::Channel(): buf(new char[256]), buf_size(256), passed_fd(-1) {}
 
-void channel_free(channel_t *c)
-{
-  free(c->buf);
-  free(c);
-}
+Channel::~Channel() { delete[] this->buf; }
 
-static void resize_buf(channel_t *t)
+void Channel::resize_buf()
 {
-  int old_size = t->buf_size;
+  int old_size = this->buf_size;
   int new_size = old_size * 2;
   char *buf = new char[new_size];
   if (!buf) mabort();
-  memcpy(buf, t->buf, old_size);
-  free(t->buf);
-  t->buf = buf;
-  t->buf_size = new_size;
+  memcpy(buf, this->buf, old_size);
+  memset(buf + old_size, 0, old_size);
+  delete[] this->buf;
+  this->buf = buf;
+  this->buf_size = new_size;
 }
 
-static int cgetc(channel_t *t, int fd)
+int Channel::cgetc(int fd)
 {
-  if (t->input.pos == t->input.len)
-    if (!refill_at_least(t, fd, 1))
+  if (this->input.pos == this->input.len)
+    if (!this->refill_at_least(fd, 1))
       return 0;
-  return t->input.buffer[t->input.pos++];
+  return this->input.buffer[this->input.pos++];
 }
 
-static int read_zstr(channel_t *t, int fd, int *pos)
+int Channel::read_zstr(int fd, int *pos)
 {
   int c, p0 = *pos;
   do {
-    if (*pos == t->buf_size)
-      resize_buf(t);
-    c = cgetc(t, fd);
-    t->buf[*pos] = c;
+    if (*pos == this->buf_size) this->resize_buf();
+    c = this->cgetc(fd);
+    this->buf[*pos] = c;
     *pos += 1;
   } while (c != 0);
   return p0;
 }
 
-static bool read_bytes(channel_t *t, int fd, int pos, int size)
+bool Channel::read_bytes(int fd, int pos, int size)
 {
-  while (t->buf_size < pos + size)
-    resize_buf(t);
+  while (this->buf_size < pos + size) this->resize_buf();
 
-  int ipos = t->input.pos, ilen = t->input.len;
+  int ipos = this->input.pos, ilen = this->input.len;
   if (ipos + size <= ilen)
   {
-    memcpy(&t->buf[pos], t->input.buffer + ipos, size);
-    t->input.pos += size;
+    memcpy(this->buf + pos, this->input.buffer + ipos, size);
+    this->input.pos += size;
     return 1;
   }
 
   int isize = ilen - ipos;
-  memcpy(&t->buf[pos], t->input.buffer + ipos, isize);
+  memcpy(this->buf + pos, this->input.buffer + ipos, isize);
   pos += isize;
   size -= isize;
-  t->input.pos = t->input.len = 0;
-  return read_all(t, fd, &t->buf[pos], size);
+  this->input.pos = this->input.len = 0;
+  return this->read_all(fd, this->buf + pos, size);
 }
 
-static void write_bytes(channel_t *t, int fd, void *buf, int size)
+void Channel::write_bytes(int fd, void *buf, int size)
 {
-  if (t->output.pos + size <= BUF_SIZE)
+  if (this->output.pos + size <= BUF_SIZE)
   {
-    memcpy(t->output.buffer + t->output.pos, buf, size);
-    t->output.pos += size;
+    memcpy(this->output.buffer + this->output.pos, buf, size);
+    this->output.pos += size;
     return;
   }
 
-  cflush(t, fd);
+  this->cflush(fd);
 
-  if (size > BUF_SIZE)
-    write_all(fd, (char*) buf, size);
+  if (size > BUF_SIZE) write_all(fd, (char*) buf, size);
   else
   {
-    memcpy(t->output.buffer, buf, size);
-    t->output.pos = size;
+    memcpy(this->output.buffer, buf, size);
+    this->output.pos = size;
   }
 }
 
-static bool try_read_u32(channel_t *t, int fd, uint32_t *tag)
+bool Channel::try_read_u32(int fd, uint32_t *tag)
 {
-  if (!refill_at_least(t, fd, 4))
+  if (!this->refill_at_least(fd, 4))
     return 0;
-  memcpy(tag, t->input.buffer + t->input.pos, 4);
-  t->input.pos += 4;
+  memcpy(tag, this->input.buffer + this->input.pos, 4);
+  this->input.pos += 4;
   return 1;
 }
 
-static uint32_t read_u32(channel_t *t, int fd)
+uint32_t Channel::read_u32(int fd)
 {
-  int avail = t->input.len - t->input.pos;
+  int avail = this->input.len - this->input.pos;
 
-  if (!refill_at_least(t, fd, 4))
-    return 0;
+  if (!this->refill_at_least(fd, 4)) return 0;
 
   uint32_t tag;
-  memcpy(&tag, t->input.buffer + t->input.pos, 4);
-  t->input.pos += 4;
+  memcpy(&tag, this->input.buffer + this->input.pos, 4);
+  this->input.pos += 4;
 
   return tag;
 }
 
-static void write_u32(channel_t *t, int fd, uint32_t u)
+void Channel::write_u32(int fd, uint32_t u)
 {
-  write_bytes(t, fd, &u, 4);
+  this->write_bytes(fd, &u, 4);
 }
 
-static float read_f32(channel_t *t, int fd)
+float Channel::read_f32(int fd)
 {
-  if (!refill_at_least(t, fd, 4))
-    return 0;
+  if (!this->refill_at_least(fd, 4)) return 0;
 
   float f;
-  memcpy(&f, t->input.buffer + t->input.pos, 4);
-  t->input.pos += 4;
+  memcpy(&f, this->input.buffer + this->input.pos, 4);
+  this->input.pos += 4;
 
   return f;
 }
 
-static void write_f32(channel_t *t, int fd, float f)
+void Channel::write_f32(int fd, float f)
 {
-  write_bytes(t, fd, &f, 4);
+  this->write_bytes(fd, &f, 4);
 }
 
 void query::data::log(FILE *f)
@@ -447,9 +422,9 @@ void query::data::log(FILE *f)
   }, *this);
 }
 
-bool channel_has_pending_query(channel_t *t, int fd, int timeout)
+bool Channel::has_pending_query(int fd, int timeout)
 {
-  if (t->input.pos != t->input.len) return 1;
+  if (this->input.pos != this->input.len) return 1;
 
   struct pollfd pfd;
   int n;
@@ -459,23 +434,19 @@ bool channel_has_pending_query(channel_t *t, int fd, int timeout)
     pfd.events = POLLRDNORM;
     pfd.revents = 0;
     n = poll(&pfd, 1, timeout);
-    if (!(n == -1 && errno == EINTR))
-      break;
+    if (!(n == -1 && errno == EINTR)) break;
   }
 
-  if (n == -1)
-    pabort();
-  if (n == 0)
-    return 0;
+  if (n == -1) pabort();
+  if (n == 0) return 0;
   return 1;
 }
 
-std::optional<query::message> query::channel_peek(channel_t *t, int fd)
+std::optional<query::message> Channel::peek(int fd)
 {
-  uint32_t result = read_u32(t, fd);
-  if (result == 0)
-    abort();
-  t->input.pos -= 4;
+  uint32_t result = this->read_u32(fd);
+  if (result == 0) abort();
+  this->input.pos -= 4;
   switch (result) {
     case query::message::CHLD:
     case query::message::CLOS:
@@ -493,90 +464,90 @@ std::optional<query::message> query::channel_peek(channel_t *t, int fd)
   }
 }
 
-std::optional<query::data> channel_read_query(channel_t *t, int fd)
+std::optional<query::data> Channel::read_query(int fd)
 {
   uint32_t tag;
 
-  if (!try_read_u32(t, fd, &tag)) return {};
-  int time = read_u32(t, fd);
+  if (!this->try_read_u32(fd, &tag)) return {};
+  int time = this->read_u32(fd);
   int pos = 0;
   switch (tag)
   {
     case query::OPEN:
     {
-        int pos_path = read_zstr(t, fd, &pos);
-        int pos_mode = read_zstr(t, fd, &pos);
+        int pos_path = this->read_zstr(fd, &pos);
+        int pos_mode = this->read_zstr(fd, &pos);
         query::open op = {
-            .fid = static_cast<file_id>(read_u32(t, fd)),
-            .path = &t->buf[pos_path],
-            .mode = &t->buf[pos_mode],
+            .fid = static_cast<file_id>(this->read_u32(fd)),
+            .path = this->buf + pos_path,
+            .mode = this->buf + pos_mode,
         };
         return query::data(time, op);
     }
     case query::READ:
     {
         return query::data(time, query::read {
-            .fid = static_cast<file_id>(read_u32(t, fd)),
-            .pos = static_cast<file_id>(read_u32(t, fd)),
-            .size = static_cast<file_id>(read_u32(t, fd)),
+            .fid = static_cast<file_id>(this->read_u32(fd)),
+            .pos = static_cast<file_id>(this->read_u32(fd)),
+            .size = static_cast<file_id>(this->read_u32(fd)),
         });
-}
+    }
     case query::WRIT:
     {
         query::writ wr {
-            .fid = static_cast<file_id>(read_u32(t, fd)),
-            .pos = static_cast<file_id>(read_u32(t, fd)),
-            .size = static_cast<file_id>(read_u32(t, fd)),
+            .fid = static_cast<file_id>(this->read_u32(fd)),
+            .pos = static_cast<file_id>(this->read_u32(fd)),
+            .size = static_cast<file_id>(this->read_u32(fd)),
         };
-        if (!read_bytes(t, fd, 0, wr.size)) return {};
-        wr.buf = t->buf;
+        if (!this->read_bytes(fd, 0, wr.size)) return {};
+        wr.buf = this->buf;
         return query::data(time, wr);
     }
     case query::CLOS:
     {
         query::clos cl {
-            .fid = static_cast<file_id>(read_u32(t, fd))
+            .fid = static_cast<file_id>(this->read_u32(fd))
         };
         return query::data(time, cl);
     }
     case query::SIZE:
     {
         query::size si {
-            .fid = static_cast<file_id>(read_u32(t, fd))
+            .fid = static_cast<file_id>(this->read_u32(fd))
         };
         return query::data(time, si);
     }
     case query::SEEN:
     {
         query::seen se {
-            .fid = static_cast<file_id>(read_u32(t, fd)),
-            .pos = static_cast<file_id>(read_u32(t, fd)),
+            .fid = static_cast<file_id>(this->read_u32(fd)),
+            .pos = static_cast<file_id>(this->read_u32(fd)),
         };
         return query::data(time, se);
     }
     case query::GPIC:
     {
-        int pos_path = read_zstr(t, fd, &pos);
+        int pos_path = this->read_zstr(fd, &pos);
         query::gpic gp {
-            .path = &t->buf[pos_path],
-            .type = static_cast<file_id>(read_u32(t, fd)),
-            .page = static_cast<file_id>(read_u32(t, fd)),
+            .path = this->buf + pos_path,
+            .type = static_cast<file_id>(this->read_u32(fd)),
+            .page = static_cast<file_id>(this->read_u32(fd)),
         };
         return query::data(time, gp);
     }
     case query::SPIC:
     {
-        int pos_path = read_zstr(t, fd, &pos);
+        int pos_path = this->read_zstr(fd, &pos);
         query::spic sp {
-            .path = &t->buf[pos_path],
+            .path = this->buf + pos_path,
             .cache = {
-                .type = static_cast<file_id>(read_u32(t, fd)),
-                .page = static_cast<file_id>(read_u32(t, fd)),
+                .type = static_cast<file_id>(this->read_u32(fd)),
+                .page = static_cast<file_id>(this->read_u32(fd)),
                 .bounds = {
-                    read_f32(t, fd),
-                    read_f32(t, fd),
-                    read_f32(t, fd),
-                    read_f32(t, fd),
+                    this->read_f32(fd),
+                    this->read_f32(fd),
+                    this->read_f32(fd),
+                    this->read_f32(fd),
                 }
             }
         };
@@ -585,11 +556,11 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
     case query::CHLD:
     {
         query::chld ch {
-            .pid = static_cast<file_id>(read_u32(t, fd)),
-            .fd = t->passed_fd,
+            .pid = static_cast<file_id>(this->read_u32(fd)),
+            .fd = this->passed_fd,
         };
         if (ch.fd == -1) abort();
-        t->passed_fd = -1;
+        this->passed_fd = -1;
         return query::data(time, ch);
     }
     default:
@@ -607,9 +578,9 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
   // }
 }
 
-void channel_write_ask(channel_t *t, int fd, ask_t *a)
+void Channel::write_ask(int fd, ask_t *a)
 {
-  write_u32(t, fd, a->tag);
+  this->write_u32(fd, a->tag);
   switch (a->tag)
   {
     case C_FLSH: break;
@@ -617,66 +588,59 @@ void channel_write_ask(channel_t *t, int fd, ask_t *a)
   }
 }
 
-static void write_time(channel_t *t, int fd, struct stat_time tm)
+void Channel::write_time(int fd, struct status::time tm)
 {
-  write_u32(t, fd, tm.sec);
-  write_u32(t, fd, tm.nsec);
+  this->write_u32(fd, tm.sec);
+  this->write_u32(fd, tm.nsec);
 }
 
-void channel_write_answer(channel_t *t, int fd, answer_t *a)
+void Channel::write_answer(int fd, answer::data &a)
 {
-  if (LOG)
-  {
-    if (a->tag == A_READ)
-      fprintf(stderr, "[info] -> READ %d\n", a->read.size);
-    else
-      fprintf(stderr, "[info] -> %s\n", answer_to_string(a->tag));
-  }
-  write_u32(t, fd, a->tag);
-  switch (a->tag)
-  {
-    case A_DONE:
-      break;
-    case A_PASS:
-      break;
-    case A_FORK:
-      break;
-    case A_READ:
-      write_u32(t, fd, a->read.size);
-      write_bytes(t, fd, t->buf, a->read.size);
-      break;
-    case A_SIZE:
-      write_u32(t, fd, a->size.size);
-      break;
-    case A_OPEN:
-      write_u32(t, fd, a->open.size);
-      write_bytes(t, fd, t->buf, a->open.size);
-      break;
-    case A_GPIC:
-      write_f32(t, fd, a->gpic.bounds[0]);
-      write_f32(t, fd, a->gpic.bounds[1]);
-      write_f32(t, fd, a->gpic.bounds[2]);
-      write_f32(t, fd, a->gpic.bounds[3]);
-      break;
-    default:
-      mabort();
-  }
+  // if (LOG)
+  // {
+  //   if (a->tag == READ)
+  //     fprintf(stderr, "[info] -> READ %d\n", a->read.size);
+  //   else
+  //     fprintf(stderr, "[info] -> %s\n", answer_to_string(a->tag));
+  // }
+  this->write_u32(fd, static_cast<uint32_t>(a.to_enum()));
+  std::visit(overloaded {
+      [](answer::done _) { return; },
+      [](answer::pass _) { return; },
+      [](answer::fork _) { return; },
+      [fd, this](answer::read r) {
+          this->write_u32(fd, r.size);
+          this->write_bytes(fd, this->buf, r.size);
+      },
+      [fd, this](answer::size s) {
+          this->write_u32(fd, s.size);
+      },
+      [fd, this](answer::open o) {
+          this->write_u32(fd, o.size);
+          this->write_bytes(fd, this->buf, o.size);
+      },
+      [fd, this](answer::gpic g) {
+          this->write_f32(fd, g.bounds[0]);
+          this->write_f32(fd, g.bounds[1]);
+          this->write_f32(fd, g.bounds[2]);
+          this->write_f32(fd, g.bounds[3]);
+      },
+  }, a);
 }
 
-void channel_flush(channel_t *t, int fd)
+void Channel::flush(int fd)
 {
-  cflush(t, fd);
+  this->cflush(fd);
 }
 
-void channel_reset(channel_t *t)
+void Channel::reset()
 {
-  t->input.pos = t->input.len = 0;
-  t->output.pos = 0;
+  this->input.pos = this->input.len = 0;
+  this->output.pos = 0;
 }
 
-void *channel_get_buffer(channel_t *t, size_t n)
+void *Channel::get_buffer(size_t n)
 {
-  while (n > t->buf_size)
-    resize_buf(t);
-  return t->buf;
+  while (n > this->buf_size) this->resize_buf();
+  return this->buf;
 }
