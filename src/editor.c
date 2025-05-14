@@ -114,7 +114,7 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
-                .base = editor_change::BASE_BYTE,
+                .base = BASE_BYTE,
                 .length = val_string_length(ctx, stack, data),
                 .span =
                     {
@@ -142,7 +142,7 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
-                .base = editor_change::BASE_LINE,
+                .base = BASE_LINE,
                 .length = val_string_length(ctx, stack, data),
                 .span =
                     {
@@ -172,7 +172,7 @@ bool editor_parse(fz_context *ctx,
             {
                 .path = val_string(ctx, stack, path),
                 .data = val_string(ctx, stack, data),
-                .base = editor_change::BASE_RANGE,
+                .base = BASE_RANGE,
                 .length = val_string_length(ctx, stack, data),
                 .range =
                     {

@@ -28,9 +28,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <cstdint>
-#include <variant>
-#include <optional>
+#include <stdint.h>
 #include "myabort.h"
 
 typedef int file_id;
@@ -56,6 +54,10 @@ struct pic_cache {
   int type, page;
   float bounds[4];
 };
+
+#ifdef __cplusplus
+#include <variant>
+#include <optional>
 
 namespace query {
     enum message : uint32_t {
@@ -248,4 +250,5 @@ class Channel
   template<typename T> friend void write(Channel *t, int fd, T value);
 };
 
+#endif /*!__cplusplus*/
 #endif /*!SPROTOCOL_H*/

@@ -29,6 +29,10 @@
 #include "incdvi.h"
 #include "synctex.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define send(method, ...) \
   (send__extract_first(__VA_ARGS__, NULL)->_class->method((txp_engine*)__VA_ARGS__))
 
@@ -73,10 +77,6 @@ struct txp_engine_class
   fileentry_t *(*find_file)(txp_engine *self, fz_context *ctx, const char *path);
   void (*notify_file_changes)(txp_engine *self, fz_context *ctx, fileentry_t *entry, int offset);
 };
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #define TXP_ENGINE_DEF_CLASS                                                \
   static void engine_destroy(txp_engine *_self, fz_context *ctx);           \
