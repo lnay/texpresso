@@ -270,6 +270,9 @@ int main(int argc, const char **argv)
       .initial = {0,},
       .protocol = protocol,
       .line_output = line_output,
+      .custom_event = custom_event,
+      .schedule_event = &schedule_event,
+      .should_reload_binary = &should_reload_binary,
       .window = window,
       .renderer = renderer,
       .ctx = ctx,
@@ -277,9 +280,6 @@ int main(int argc, const char **argv)
       .doc_path = doc_path,
       .doc_name = doc_name,
       .inclusion_path = inclusion_path,
-      .custom_event = custom_event,
-      .schedule_event = &schedule_event,
-      .should_reload_binary = &should_reload_binary,
   };
 
   while (texpresso_main(&pstate));

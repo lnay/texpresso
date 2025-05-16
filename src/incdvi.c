@@ -150,7 +150,7 @@ int incdvi_page_count(incdvi_t *d)
   return (d->page_len / 2);
 }
 
-static void incdvi_parse_fontdef(fz_context *ctx, incdvi_t *restrict d, fz_buffer *buf, int offset)
+static void incdvi_parse_fontdef(fz_context *ctx, incdvi_t *__restrict__ d, fz_buffer *buf, int offset)
 {
   if (offset > buf->len) abort();
   enum dvi_version version = dvi_context_state(d->dc)->version;

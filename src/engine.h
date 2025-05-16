@@ -98,15 +98,15 @@ struct txp_engine_class
   static struct txp_engine_class _class = {                                 \
       .destroy = engine_destroy,                                            \
       .step = engine_step,                                                  \
+      .begin_changes = engine_begin_changes,                                \
+      .detect_changes = engine_detect_changes,                              \
+      .end_changes = engine_end_changes,                                    \
       .page_count = engine_page_count,                                      \
       .render_page = engine_render_page,                                    \
       .get_status = engine_get_status,                                      \
       .scale_factor = engine_scale_factor,                                  \
       .synctex = engine_synctex,                                            \
       .find_file = engine_find_file,                                        \
-      .begin_changes = engine_begin_changes,                                \
-      .detect_changes = engine_detect_changes,                              \
-      .end_changes = engine_end_changes,                                    \
       .notify_file_changes = engine_notify_file_changes,                    \
   }
 

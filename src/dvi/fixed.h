@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -81,3 +84,6 @@ static inline fixed_t fixed_div(fixed_t a, fixed_t b)
 }
 
 #endif /*!FIXED*/
+#ifdef __cplusplus
+}
+#endif

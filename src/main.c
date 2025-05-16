@@ -677,7 +677,7 @@ static void realize_change(struct persistent_state *ps,
 
   int offset = op->span.offset, remove = op->span.remove, length = op->length;
 
-  if (op->base == BASE_LINE)
+  if (op->base == editor_change::BASE_LINE)
   {
     // Compute byte offsets from line offsets
     int line = offset, count = remove;
@@ -716,7 +716,7 @@ static void realize_change(struct persistent_state *ps,
 
     remove -= offset;
   }
-  else if (op->base == BASE_RANGE)
+  else if (op->base == editor_change::BASE_RANGE)
   {
     // Compute byte offsets from line offsets
     int line = op->range.start_line;
@@ -1063,7 +1063,7 @@ static void interpret_command(struct persistent_state *ps,
       break;
 
     case EDIT_STAY_ON_TOP:
-      SDL_SetWindowAlwaysOnTop(ui->window, cmd.stay_on_top.status);
+      SDL_SetWindowAlwaysOnTop(ui->window, (SDL_bool) cmd.stay_on_top.status);
       fprintf(stderr, "[command] stay-on-top %d\n", cmd.stay_on_top.status);
       break;
 
@@ -1341,13 +1341,13 @@ bool texpresso_main(struct persistent_state *ps)
           case SDLK_b:
             SDL_SetWindowBordered(
                 ui->window,
-                !!(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_BORDERLESS));
+                (SDL_bool) !!(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_BORDERLESS));
             break;
 
           case SDLK_t:
             SDL_SetWindowAlwaysOnTop(
                 ui->window,
-                !(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_ALWAYS_ON_TOP));
+                (SDL_bool) !(SDL_GetWindowFlags(ui->window) & SDL_WINDOW_ALWAYS_ON_TOP));
             break;
 
           case SDLK_c:

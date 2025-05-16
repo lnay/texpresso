@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 /*
  * MIT License
  *
@@ -140,3 +143,6 @@ bool vstack_in_dict_value(vstack *t);
 bool vstack_in_array(vstack *t);
 
 #endif // VSTACK_H_
+#ifdef __cplusplus
+}
+#endif

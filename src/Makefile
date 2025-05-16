@@ -33,8 +33,11 @@ $(BUILD)/texpresso-debug: ../scripts/texpresso-debug
 re2c:
 	$(MAKE) -C dvi $@
 
-$(DIR)/%.o: %.c
+$(DIR)/json_parser.o: json_parser.c
 	$(CC) -c -o $@ -Idvi/ $<
+
+$(DIR)/%.o: %.c
+	$(CXX) -c -o $@ -Idvi/ $<
 
 $(DIR)/libmydvi.a: $(wildcard dvi/*.*)
 	$(MAKE) -C dvi
