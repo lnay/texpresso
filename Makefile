@@ -35,6 +35,7 @@ config:
 	echo >Makefile.config "CFLAGS=-O2 -ggdb -I. -fPIC"
 	echo >>Makefile.config 'CC=gcc $$(CFLAGS)'
 	echo >>Makefile.config 'LDCC=g++ $$(CFLAGS)'
+	echo >>Makefile.config 'CXX=g++ -std=c++23 -fpermissive -Wwrite-strings $$(CFLAGS)'
 	echo >>Makefile.config "LIBS=-lmupdf -lm `CC=gcc ./mupdf-config.sh` -lz -ljpeg -ljbig2dec -lharfbuzz -lfreetype -lopenjp2 -lgumbo -lSDL2"
 	echo >>Makefile.config "TECTONIC_ENV="
 endif

@@ -307,7 +307,6 @@ static void prepare_texture(fz_context *ctx, txp_renderer *self)
     self->st = (texture_state){
         .w = pw,
         .h = ph,
-        .rect = {0},
         // 0,
     };
   }
