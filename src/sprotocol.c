@@ -29,9 +29,41 @@
 #include <errno.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <cstdio>
+#include <variant>
+#include <optional>
 
 #define PACK(a,b,c,d) ((d << 24) | (c << 16) | (b << 8) | a)
 #define BUF_SIZE 4096
+
+template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+
+query::message query::data::to_enum() {
+    return(std::visit(overloaded {
+        [](query::open) { return query::message::Q_OPEN; },
+        [](query::read) { return query::message::Q_READ; },
+        [](query::writ) { return query::message::Q_WRIT; },
+        [](query::clos) { return query::message::Q_CLOS; },
+        [](query::size) { return query::message::Q_SIZE; },
+        [](query::seen) { return query::message::Q_SEEN; },
+        [](query::chld) { return query::message::Q_CHLD; },
+        [](query::gpic) { return query::message::Q_GPIC; },
+        [](query::spic) { return query::message::Q_SPIC; },
+    }, *this));
+};
+
+answer::message answer::data::to_enum() const {
+    return(std::visit(overloaded {
+        [](answer::open) { return answer::message::A_OPEN; },
+        [](answer::read) { return answer::message::A_READ; },
+        [](answer::size) { return answer::message::A_SIZE; },
+        [](answer::gpic) { return answer::message::A_GPIC; },
+        [](answer::done) { return answer::message::A_DONE; },
+        [](answer::pass) { return answer::message::A_PASS; },
+        [](answer::fork) { return answer::message::A_FORK; },
+    }, *this));
+};
 
 struct channel_s
 {
@@ -60,7 +92,7 @@ static ssize_t read_(channel_t *t, int fd, void *data, size_t len)
   msg.msg_control = &msg_control;
 
   ssize_t recvd;
-  do { recvd = recvmsg(fd, &msg, 0); } 
+  do { recvd = recvmsg(fd, &msg, 0); }
   while (recvd == -1 && errno == EINTR);
 
   if (recvd == -1)
@@ -204,33 +236,49 @@ bool channel_handshake(channel_t *c, int fd)
 
 #define CASE(K,X) case K##_##X: return STR(X)
 
-const char *query_to_string(enum query q)
+const char *query_to_string(query::message q)
 {
   switch (q)
   {
-    CASE(Q,OPEN);
-    CASE(Q,READ);
-    CASE(Q,WRIT);
-    CASE(Q,CLOS);
-    CASE(Q,SIZE);
-    CASE(Q,SEEN);
-    CASE(Q,GPIC);
-    CASE(Q,SPIC);
-    CASE(Q,CHLD);
+    case query::Q_OPEN:
+      return "OPEN";
+    case query::Q_READ:
+      return "READ";
+    case query::Q_WRIT:
+      return "WRIT";
+    case query::Q_CLOS:
+      return "CLOS";
+    case query::Q_SIZE:
+      return "SIZE";
+    case query::Q_SEEN:
+      return "SEEN";
+    case query::Q_GPIC:
+      return "GPIC";
+    case query::Q_SPIC:
+      return "SPIC";
+    case query::Q_CHLD:
+      return "CHLD";
   }
 }
 
-const char *answer_to_string(enum answer q)
+const char *answer_to_string( answer::message q)
 {
   switch (q)
   {
-    CASE(A,DONE);
-    CASE(A,PASS);
-    CASE(A,SIZE);
-    CASE(A,READ);
-    CASE(A,FORK);
-    CASE(A,OPEN);
-    CASE(A,GPIC);
+    case answer::message::A_DONE:
+      return "DONE";
+    case answer::message::A_PASS:
+      return "PASS";
+    case answer::message::A_SIZE:
+      return "SIZE";
+    case answer::message::A_READ:
+      return "READ";
+    case answer::message::A_FORK:
+      return "FORK";
+    case answer::message::A_OPEN:
+      return "OPEN";
+    case answer::message::A_GPIC:
+      return "GPIC";
   }
 }
 
@@ -378,64 +426,44 @@ static void write_f32(channel_t *t, int fd, float f)
   write_bytes(t, fd, &f, 4);
 }
 
-void log_query(FILE *f, query_t *r)
+void query::data::log(FILE *f)
 {
-  fprintf(f, "%04dms: ", r->time);
-  switch (r->tag)
-  {
-    case Q_OPEN:
-      {
-        fprintf(f, "OPEN(%d, \"%s\", \"%s\")\n", r->open.fid, r->open.path, r->open.mode);
-        break;
-      }
-    case Q_READ:
-      {
-        fprintf(f, "READ(%d, %d, %d)\n", r->read.fid, r->read.pos, r->read.size);
-        break;
-      }
-    case Q_WRIT:
-      {
-        fprintf(f, "WRIT(%d, %d, %d)\n",
-            r->writ.fid, r->writ.pos, r->writ.size);
-        break;
-      }
-    case Q_CLOS:
-      {
-        fprintf(f, "CLOS(%d)\n", r->clos.fid);
-        break;
-      }
-    case Q_SIZE:
-      {
-        fprintf(f, "SIZE(%d)\n", r->size.fid);
-        break;
-      }
-    case Q_SEEN:
-      {
-        fprintf(f, "SEEN(%d, %d)\n", r->seen.fid, r->seen.pos);
-        break;
-      }
-    case Q_GPIC:
-      {
-        fprintf(f, "GPIC(\"%s\",%d,%d)\n", r->gpic.path, r->gpic.type, r->gpic.page);
-        break;
-      }
-    case Q_SPIC:
-      {
-        fprintf(f, "SPIC(\"%s\", %d, %d, %.02f, %.02f, %.02f, %.02f)\n", 
-                r->spic.path, 
-                r->spic.cache.type, r->spic.cache.page,
-                r->spic.cache.bounds[0], r->spic.cache.bounds[1],
-                r->spic.cache.bounds[2], r->spic.cache.bounds[3]);
-        break;
-      }
-    case Q_CHLD:
-      {
-        fprintf(f, "CHLD(pid:%d, fd:%d)\n", r->chld.pid, r->chld.fd);
-        break;
-      }
-    default:
-      mabort();
-  }
+  fprintf(f, "%04dms: ", this->time);
+  std::visit(overloaded {
+      [f](query::open o) {
+          fprintf(f, "OPEN(%d, \"%s\", \"%s\")\n", o.fid, o.path, o.mode);
+      },
+      [f](query::read r) {
+          fprintf(f, "READ(%d, %d, %d)\n", r.fid, r.pos, r.size);
+      },
+      [f](query::writ w) {
+          fprintf(f, "WRIT(%d, %d, %d)\n",
+              w.fid, w.pos, w.size);
+      },
+      [f](query::clos c) {
+          fprintf(f, "CLOS(%d)\n", c.fid);
+      },
+      [f](query::size s) {
+          fprintf(f, "SIZE(%d)\n", s.fid);
+      },
+      [f](query::seen s) {
+          fprintf(f, "SEEN(%d, %d)\n", s.fid, s.pos);
+
+      },
+      [f](query::chld c) {
+          fprintf(f, "CHLD(pid:%d, fd:%d)\n", c.pid, c.fd);
+      },
+      [f](query::gpic g) {
+          fprintf(f, "GPIC(\"%s\",%d,%d)\n", g.path, g.type, g.page);
+      },
+      [f](query::spic s) {
+          fprintf(f, "SPIC(\"%s\", %d, %d, %.02f, %.02f, %.02f, %.02f)\n",
+                  s.path,
+                  s.cache.type, s.cache.page,
+                  s.cache.bounds[0], s.cache.bounds[1],
+                  s.cache.bounds[2], s.cache.bounds[3]);
+      },
+  }, *this);
 }
 
 bool channel_has_pending_query(channel_t *t, int fd, int timeout)
@@ -461,7 +489,7 @@ bool channel_has_pending_query(channel_t *t, int fd, int timeout)
   return 1;
 }
 
-enum query channel_peek_query(channel_t *t, int fd)
+query::message channel_peek_query(channel_t *t, int fd)
 {
   uint32_t result = read_u32(t, fd);
   if (result == 0)
@@ -470,101 +498,130 @@ enum query channel_peek_query(channel_t *t, int fd)
   return result;
 }
 
-bool channel_read_query(channel_t *t, int fd, query_t *r)
+std::optional<query::data> channel_read_query(channel_t *t, int fd)
 {
   uint32_t tag;
 
-  if (!try_read_u32(t, fd, &tag))
-    return 0;
-  r->tag = tag;
-  r->time = read_u32(t, fd);
+  if (!try_read_u32(t, fd, &tag)) return {};
+  int time = read_u32(t, fd);
   int pos = 0;
   switch (tag)
   {
-    case Q_OPEN:
-      {
-        r->open.fid = read_u32(t, fd);
+    case query::Q_OPEN:
+    {
+        fprintf(stderr, "[info] Reading OPEN");
+        file_id fid = read_u32(t, fd);
         int pos_path = read_zstr(t, fd, &pos);
         int pos_mode = read_zstr(t, fd, &pos);
-        r->open.path = &t->buf[pos_path];
-        r->open.mode = &t->buf[pos_mode];
-        break;
-      }
-    case Q_READ:
-      {
-        r->read.fid = read_u32(t, fd);
-        r->read.pos = read_u32(t, fd);
-        r->read.size = read_u32(t, fd);
-        break;
-      }
-    case Q_WRIT:
-      {
-        r->writ.fid = read_u32(t, fd);
-        r->writ.pos = read_u32(t, fd);
-        r->writ.size = read_u32(t, fd);
-        if (!read_bytes(t, fd, 0, r->writ.size))
-          return 0;
-        r->writ.buf = t->buf;
-        break;
-      }
-    case Q_CLOS:
-      {
-        r->clos.fid = read_u32(t, fd);
-        break;
-      }
-    case Q_SIZE:
-      {
-        r->size.fid = read_u32(t, fd);
-        break;
-      }
-    case Q_SEEN:
-      {
-        r->seen.fid = read_u32(t, fd);
-        r->seen.pos = read_u32(t, fd);
-        break;
-      }
-    case Q_GPIC:
-      {
+
+        query::open op = {
+            .fid = fid,
+            .path = &t->buf[pos_path],
+            .mode = &t->buf[pos_mode],
+        };
+        return query::data(time, op);
+    }
+    case query::Q_READ:
+    {
+        fprintf(stderr, "[info] Reading READ");
+        return query::data(time, query::read {
+            .fid = static_cast<file_id>(read_u32(t, fd)),
+            .pos = static_cast<file_id>(read_u32(t, fd)),
+            .size = static_cast<file_id>(read_u32(t, fd)),
+        });
+    }
+    case query::Q_WRIT:
+    {
+        fprintf(stderr, "[info] Reading WRIT");
+        query::writ wr {
+            .fid = static_cast<file_id>(read_u32(t, fd)),
+            .pos = static_cast<file_id>(read_u32(t, fd)),
+            .size = static_cast<file_id>(read_u32(t, fd)),
+        };
+        if (!read_bytes(t, fd, 0, wr.size)) return {};
+        wr.buf = t->buf;
+        return query::data(time, wr);
+    }
+    case query::Q_CLOS:
+    {
+        fprintf(stderr, "[info] Reading CLOS");
+        query::clos cl {
+            .fid = static_cast<file_id>(read_u32(t, fd))
+        };
+        return query::data(time, cl);
+    }
+    case query::Q_SIZE:
+    {
+        fprintf(stderr, "[info] Reading SIZE");
+        query::size si {
+            .fid = static_cast<file_id>(read_u32(t, fd))
+        };
+        return query::data(time, si);
+    }
+    case query::Q_SEEN:
+    {
+        fprintf(stderr, "[info] Reading SEEN");
+        query::seen se {
+            .fid = static_cast<file_id>(read_u32(t, fd)),
+            .pos = static_cast<file_id>(read_u32(t, fd)),
+        };
+        return query::data(time, se);
+    }
+    case query::Q_GPIC:
+    {
+        fprintf(stderr, "[info] Reading GPIC");
         int pos_path = read_zstr(t, fd, &pos);
-        r->gpic.path = &t->buf[pos_path];
-        r->gpic.type = read_u32(t, fd);
-        r->gpic.page = read_u32(t, fd);
-        break;
-      }
-    case Q_SPIC:
-      {
+        query::gpic gp {
+            .path = &t->buf[pos_path],
+            .type = static_cast<file_id>(read_u32(t, fd)),
+            .page = static_cast<file_id>(read_u32(t, fd)),
+        };
+        return query::data(time, gp);
+    }
+    case query::Q_SPIC:
+    {
+        fprintf(stderr, "[info] Reading SPIC");
         int pos_path = read_zstr(t, fd, &pos);
-        r->spic.path = &t->buf[pos_path];
-        r->spic.cache.type = read_u32(t, fd);
-        r->spic.cache.page = read_u32(t, fd);
-        r->spic.cache.bounds[0] = read_f32(t, fd);
-        r->spic.cache.bounds[1] = read_f32(t, fd);
-        r->spic.cache.bounds[2] = read_f32(t, fd);
-        r->spic.cache.bounds[3] = read_f32(t, fd);
-        break;
-      }
-    case Q_CHLD:
-      {
-        r->chld.pid = read_u32(t, fd);
-        if (t->passed_fd == -1)
-          abort();
-        r->chld.fd = t->passed_fd;
+        query::spic sp {
+            .path = &t->buf[pos_path],
+            .cache = {
+                .type = static_cast<file_id>(read_u32(t, fd)),
+                .page = static_cast<file_id>(read_u32(t, fd)),
+                .bounds = {
+                    read_f32(t, fd),
+                    read_f32(t, fd),
+                    read_f32(t, fd),
+                    read_f32(t, fd),
+                }
+            }
+        };
+        return query::data(time, sp);
+    }
+    case query::Q_CHLD:
+    {
+        fprintf(stderr, "[info] Reading CHLD");
+        query::chld ch {
+            .pid = static_cast<file_id>(read_u32(t, fd)),
+            .fd = t->passed_fd,
+        };
+        if (ch.fd == -1) abort();
         t->passed_fd = -1;
-        break;
-      }
+        return query::data(time, ch);
+    }
     default:
     {
-      fprintf(stderr, "unexpected tag: %c%c%c%c\n",
-              tag & 0xFF, (tag >> 8) & 0xFF, (tag >> 16) & 0xFF, (tag >> 24) & 0xFF);
-      mabort();
+        fprintf(stderr, "unexpected tag: %c%c%c%c\n",
+                tag & 0xFF, (tag >> 8) & 0xFF, (tag >> 16) & 0xFF, (tag >> 24) & 0xFF);
+        mabort();
+        return {};
     }
   }
-  if (LOG)
-  {
-    fprintf(stderr, "[info] <- ");
-    log_query(stderr, r);
-  }
-  return 1;
+  // put log on the caller?
+  // if (LOG)
+  // {
+  //   fprintf(stderr, "[info] <- ");
+  //   log_query(stderr, r);
+  // }
 }
 
 void channel_write_ask(channel_t *t, int fd, ask_t *a)
@@ -583,44 +640,38 @@ static void write_time(channel_t *t, int fd, struct stat_time tm)
   write_u32(t, fd, tm.nsec);
 }
 
-void channel_write_answer(channel_t *t, int fd, answer_t *a)
+void channel_write_answer(channel_t *t, int fd, const answer::data &a)
 {
-  if (LOG)
-  {
-    if (a->tag == A_READ)
-      fprintf(stderr, "[info] -> READ %d\n", a->read.size);
-    else
-      fprintf(stderr, "[info] -> %s\n", answer_to_string(a->tag));
-  }
-  write_u32(t, fd, a->tag);
-  switch (a->tag)
-  {
-    case A_DONE:
-      break;
-    case A_PASS:
-      break;
-    case A_FORK:
-      break;
-    case A_READ:
-      write_u32(t, fd, a->read.size);
-      write_bytes(t, fd, t->buf, a->read.size);
-      break;
-    case A_SIZE:
-      write_u32(t, fd, a->size.size);
-      break;
-    case A_OPEN:
-      write_u32(t, fd, a->open.size);
-      write_bytes(t, fd, t->buf, a->open.size);
-      break;
-    case A_GPIC:
-      write_f32(t, fd, a->gpic.bounds[0]);
-      write_f32(t, fd, a->gpic.bounds[1]);
-      write_f32(t, fd, a->gpic.bounds[2]);
-      write_f32(t, fd, a->gpic.bounds[3]);
-      break;
-    default:
-      mabort();
-  }
+    // if (LOG)
+    // {
+      // if (a->tag == READ)
+      //   fprintf(stderr, "[info] -> READ %d\n", a->read.size);
+      // else
+        fprintf(stderr, "[info] -> %s\n", answer_to_string(a.to_enum()));
+    // }
+    write_u32(t, fd, static_cast<uint32_t>(a.to_enum()));
+    std::visit(overloaded {
+        [](answer::done _) { return; },
+        [](answer::pass _) { return; },
+        [](answer::fork _) { return; },
+        [fd, t](answer::read r) {
+            write_u32(t, fd, r.size);
+            write_bytes(t, fd, t->buf, r.size);
+        },
+        [fd, t](answer::size s) {
+            write_u32(t, fd, s.size);
+        },
+        [fd, t](answer::open o) {
+            write_u32(t, fd, o.size);
+            write_bytes(t, fd, t->buf, o.size);
+        },
+        [fd, t](answer::gpic g) {
+            write_f32(t, fd, g.bounds[0]);
+            write_f32(t, fd, g.bounds[1]);
+            write_f32(t, fd, g.bounds[2]);
+            write_f32(t, fd, g.bounds[3]);
+        },
+    }, a);
 }
 
 void channel_flush(channel_t *t, int fd)

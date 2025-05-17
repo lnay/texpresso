@@ -1,3 +1,6 @@
+#ifndef GENERIC_ENGINE_H_
+#define GENERIC_ENGINE_H_
+#include "state.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,10 +28,7 @@ extern "C" {
  * IN THE SOFTWARE.
  */
 
-#ifndef GENERIC_ENGINE_H_
-#define GENERIC_ENGINE_H_
 
-#include "state.h"
 #include "incdvi.h"
 #include "synctex.h"
 
@@ -110,7 +110,7 @@ struct txp_engine_class
       .notify_file_changes = engine_notify_file_changes,                    \
   }
 
-#endif // GENERIC_ENGINE_H_
 #ifdef __cplusplus
 }
 #endif
+#endif // GENERIC_ENGINE_H_

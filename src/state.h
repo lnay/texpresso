@@ -1,6 +1,3 @@
-#ifdef __cplusplus
-extern "C" {
-#endif
 /*
  * MIT License
  *
@@ -28,9 +25,14 @@ extern "C" {
 #ifndef STATE_H
 #define STATE_H
 
+#include "pic_cache.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <sys/stat.h>
 #include <mupdf/fitz/buffer.h>
-#include "sprotocol.h"
 
 #define MAX_FILES 1024
 
@@ -50,8 +52,8 @@ typedef struct fileentry_s {
   fz_buffer *fs_data;
 
   // Cached picture information
-  struct pic_cache pic_cache;
-  
+  pic_cache pic_cache;
+
   // State of the file in the text editor (or NULL if unedited)
   fz_buffer *edit_data;
 
@@ -97,7 +99,7 @@ void log_overwrite(fz_context *ctx, log_t *log, fz_buffer *buf, int start, int l
 
 bool stat_same(struct stat *st1, struct stat *st2);
 
-#endif /*!STATE_H*/
 #ifdef __cplusplus
 }
 #endif
+#endif /*!STATE_H*/
