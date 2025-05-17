@@ -353,7 +353,7 @@ void Channel::write_bytes(int fd, void *buf, int size)
 
 template<typename T> std::optional<T> my_read(Channel *t, int fd)
 {
-  if (!t->refill_at_least(fd, sizeof(T))) return 0;
+  if (!t->refill_at_least(fd, sizeof(T))) return {};
 
   T f;
   memcpy(&f, t->input.buffer + t->input.pos, sizeof(T));
@@ -454,7 +454,8 @@ std::optional<query::data> Channel::read_query(int fd)
   uint32_t tag;
   try {
     tag = my_read<uint32_t>(this, fd).value();
-  } catch (std::bad_optional_access) {
+  } catch (...) {
+    mabort();
     return {};
   }
   int time = my_read<int>(this, fd).value();
