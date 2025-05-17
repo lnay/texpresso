@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <cstdint>
 #include "myabort.h"
 
 typedef int file_id;
@@ -186,7 +187,7 @@ namespace status {
 
 /* "ASK" :P */
 
-enum ask {
+enum ask: uint32_t {
   C_FLSH = PACK('F','L','S','H'),
 };
 
@@ -246,8 +247,8 @@ class Channel
   Channel();
   ~Channel();
 
-  template<typename T> friend std::optional<T> read(Channel *t, int fd);
-  template<typename T> friend void write(Channel *t, int fd, T value);
+  template<typename T> friend std::optional<T> my_read(Channel *t, int fd);
+  template<typename T> friend void my_write(Channel *t, int fd, T value);
 };
 
 #endif /*!__cplusplus*/
