@@ -234,6 +234,22 @@ struct Channel
   void *get_buffer(size_t n);
   void flush(int fd);
   void reset();
+
+private:
+  ssize_t read_(int fd, void *data, size_t len);
+  bool read_all(int fd, char *buf, int size);
+  void cflush(int fd);
+  bool refill_at_least(int fd, int at_least);
+  void resize_buf();
+  int cgetc(int fd);
+  int read_zstr(int fd, int *pos);
+  bool read_bytes(int fd, int pos, int size);
+  void write_bytes(int fd, void *buf, int size);
+  bool try_read_u32(int fd, uint32_t *tag);
+  uint32_t read_u32(int fd);
+  void write_u32(int fd, uint32_t u);
+  float read_f32(int fd);
+  void write_f32(int fd, float f);
 };
 
 #endif /*!SPROTOCOL_H*/
