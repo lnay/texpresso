@@ -64,6 +64,121 @@ answer::message answer::data::to_enum() const {
     }, *this));
 };
 
+const char *query_to_string(query::message q)
+{
+  switch (q)
+  {
+    case query::Q_OPEN:
+      return "OPEN";
+    case query::Q_READ:
+      return "READ";
+    case query::Q_WRIT:
+      return "WRIT";
+    case query::Q_CLOS:
+      return "CLOS";
+    case query::Q_SIZE:
+      return "SIZE";
+    case query::Q_SEEN:
+      return "SEEN";
+    case query::Q_GPIC:
+      return "GPIC";
+    case query::Q_SPIC:
+      return "SPIC";
+    case query::Q_CHLD:
+      return "CHLD";
+  }
+}
+
+const char *answer_to_string( answer::message q)
+{
+  switch (q)
+  {
+    case answer::message::A_DONE:
+      return "DONE";
+    case answer::message::A_PASS:
+      return "PASS";
+    case answer::message::A_SIZE:
+      return "SIZE";
+    case answer::message::A_READ:
+      return "READ";
+    case answer::message::A_FORK:
+      return "FORK";
+    case answer::message::A_OPEN:
+      return "OPEN";
+    case answer::message::A_GPIC:
+      return "GPIC";
+  }
+}
+
+const char *ask_to_string(enum ask q)
+{
+  switch (q)
+  {
+    CASE(C,FLSH);
+  }
+}
+
+void query::data::log(FILE *f)
+{
+  fprintf(f, "%04dms: ", this->time);
+  std::visit(overloaded {
+      [f](query::open o) {
+          fprintf(f, "OPEN(%d, \"%s\", \"%s\")\n", o.fid, o.path, o.mode);
+      },
+      [f](query::read r) {
+          fprintf(f, "READ(%d, %d, %d)\n", r.fid, r.pos, r.size);
+      },
+      [f](query::writ w) {
+          fprintf(f, "WRIT(%d, %d, %d)\n",
+              w.fid, w.pos, w.size);
+      },
+      [f](query::clos c) {
+          fprintf(f, "CLOS(%d)\n", c.fid);
+      },
+      [f](query::size s) {
+          fprintf(f, "SIZE(%d)\n", s.fid);
+      },
+      [f](query::seen s) {
+          fprintf(f, "SEEN(%d, %d)\n", s.fid, s.pos);
+      },
+      [f](query::chld c) {
+          fprintf(f, "CHLD(pid:%d, fd:%d)\n", c.pid, c.fd);
+      },
+      [f](query::gpic g) {
+          fprintf(f, "GPIC(\"%s\",%d,%d)\n", g.path, g.type, g.page);
+      },
+      [f](query::spic s) {
+          fprintf(f, "SPIC(\"%s\", %d, %d, %.02f, %.02f, %.02f, %.02f)\n",
+                  s.path,
+                  s.cache.type, s.cache.page,
+                  s.cache.bounds[0], s.cache.bounds[1],
+                  s.cache.bounds[2], s.cache.bounds[3]);
+      },
+  }, *this);
+}
+
+static void write_all(int fd, const char *buf, int size)
+{
+  while (size > 0)
+  {
+    int n = write(fd, buf, size);
+    if (n == -1)
+    {
+      if (errno == EINTR)
+        continue;
+      perror("sprotocol.c write_all");
+      print_backtrace();
+      if (errno == ECONNRESET)
+        return;
+    }
+    if (n <= 0)
+      mabort();
+
+    buf += n;
+    size -= n;
+  }
+}
+
 ssize_t Channel::read_(int fd, void *data, size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
@@ -146,28 +261,6 @@ bool Channel::read_all(int fd, char *buf, int size)
   return 1;
 }
 
-static void write_all(int fd, const char *buf, int size)
-{
-  while (size > 0)
-  {
-    int n = write(fd, buf, size);
-    if (n == -1)
-    {
-      if (errno == EINTR)
-        continue;
-      perror("sprotocol.c write_all");
-      print_backtrace();
-      if (errno == ECONNRESET)
-        return;
-    }
-    if (n <= 0)
-      mabort();
-
-    buf += n;
-    size -= n;
-  }
-}
-
 void Channel::cflush(int fd)
 {
   int pos = this->output.pos;
@@ -219,61 +312,6 @@ bool Channel::handshake(int fd)
 /* PROTOCOL DEFINITION */
 
 #define CASE(K,X) case K##_##X: return STR(X)
-
-const char *query_to_string(query::message q)
-{
-  switch (q)
-  {
-    case query::Q_OPEN:
-      return "OPEN";
-    case query::Q_READ:
-      return "READ";
-    case query::Q_WRIT:
-      return "WRIT";
-    case query::Q_CLOS:
-      return "CLOS";
-    case query::Q_SIZE:
-      return "SIZE";
-    case query::Q_SEEN:
-      return "SEEN";
-    case query::Q_GPIC:
-      return "GPIC";
-    case query::Q_SPIC:
-      return "SPIC";
-    case query::Q_CHLD:
-      return "CHLD";
-  }
-}
-
-const char *answer_to_string( answer::message q)
-{
-  switch (q)
-  {
-    case answer::message::A_DONE:
-      return "DONE";
-    case answer::message::A_PASS:
-      return "PASS";
-    case answer::message::A_SIZE:
-      return "SIZE";
-    case answer::message::A_READ:
-      return "READ";
-    case answer::message::A_FORK:
-      return "FORK";
-    case answer::message::A_OPEN:
-      return "OPEN";
-    case answer::message::A_GPIC:
-      return "GPIC";
-  }
-}
-
-const char *ask_to_string(enum ask q)
-{
-  switch (q)
-  {
-    CASE(C,FLSH);
-  }
-}
-
 Channel::Channel()
 {
   this->buf = malloc(256);
@@ -403,46 +441,6 @@ float Channel::read_f32(int fd)
 void Channel::write_f32(int fd, float f)
 {
   this->write_bytes(fd, &f, 4);
-}
-
-void query::data::log(FILE *f)
-{
-  fprintf(f, "%04dms: ", this->time);
-  std::visit(overloaded {
-      [f](query::open o) {
-          fprintf(f, "OPEN(%d, \"%s\", \"%s\")\n", o.fid, o.path, o.mode);
-      },
-      [f](query::read r) {
-          fprintf(f, "READ(%d, %d, %d)\n", r.fid, r.pos, r.size);
-      },
-      [f](query::writ w) {
-          fprintf(f, "WRIT(%d, %d, %d)\n",
-              w.fid, w.pos, w.size);
-      },
-      [f](query::clos c) {
-          fprintf(f, "CLOS(%d)\n", c.fid);
-      },
-      [f](query::size s) {
-          fprintf(f, "SIZE(%d)\n", s.fid);
-      },
-      [f](query::seen s) {
-          fprintf(f, "SEEN(%d, %d)\n", s.fid, s.pos);
-
-      },
-      [f](query::chld c) {
-          fprintf(f, "CHLD(pid:%d, fd:%d)\n", c.pid, c.fd);
-      },
-      [f](query::gpic g) {
-          fprintf(f, "GPIC(\"%s\",%d,%d)\n", g.path, g.type, g.page);
-      },
-      [f](query::spic s) {
-          fprintf(f, "SPIC(\"%s\", %d, %d, %.02f, %.02f, %.02f, %.02f)\n",
-                  s.path,
-                  s.cache.type, s.cache.page,
-                  s.cache.bounds[0], s.cache.bounds[1],
-                  s.cache.bounds[2], s.cache.bounds[3]);
-      },
-  }, *this);
 }
 
 bool Channel::has_pending_query(int fd, int timeout)
