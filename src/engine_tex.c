@@ -74,7 +74,7 @@ struct tex_engine
   state_t st;
   log_t *log;
 
-  channel_t *c;
+  Channel *c;
   process_t processes[32];
   int process_count;
 
@@ -256,7 +256,7 @@ static void pop_process(fz_context *ctx, struct tex_engine *self)
   log_rollback(ctx, self->log, mark);
 }
 
-static std::optional<query::data> read_query(struct tex_engine *self, channel_t *t)
+static std::optional<query::data> read_query(struct tex_engine *self, Channel *t)
 {
   process_t *p = get_process(self);
   std::optional<query::data> q = channel_read_query(t, p->fd);
@@ -1371,7 +1371,7 @@ txp_engine *txp_create_tex_engine(fz_context *ctx,
   self->trace_cap = 0;
   self->fence_pos = -1;
   self->restart = log_snapshot(ctx, self->log);
-  self->c = channel_new();
+  self->c = new Channel();
   self->process_count = 0;
 
   self->bundle = bundle_server_start(ctx, tectonic_path, tex_dir);

@@ -44,10 +44,10 @@ extern "C" {
 #include <optional>
 #endif
 
-typedef struct channel_s channel_t;
 typedef int file_id;
 
 #define LOG 0
+#define BUF_SIZE 4096
 
 #define LEN(txt) (sizeof(txt)-1)
 #define STR(X) #X
@@ -208,19 +208,35 @@ typedef struct {
   };
 } ask_t;
 
+/* Channel */
+
+struct Channel
+{
+  struct {
+    char buffer[BUF_SIZE];
+    int pos, len;
+  } input;
+  struct {
+    char buffer[BUF_SIZE];
+    int pos;
+  } output;
+  int passed_fd;
+  char *buf;
+  int buf_size;
+  Channel();
+  ~Channel();
+};
+
 /* Functions */
 
-channel_t *channel_new(void);
-void channel_free(channel_t *c);
-
-bool channel_handshake(channel_t *c, int fd);
-bool channel_has_pending_query(channel_t *t, int fd, int timeout);
-std::optional<query::data> channel_read_query(channel_t *t, int fd);
-query::message channel_peek_query(channel_t *t, int fd);
-void channel_write_ask(channel_t *t, int fd, ask_t *a);
-void channel_write_answer(channel_t *t, int fd, const answer::data &a);
-void *channel_get_buffer(channel_t *t, size_t n);
-void channel_flush(channel_t *t, int fd);
-void channel_reset(channel_t *t);
+bool channel_handshake(Channel *c, int fd);
+bool channel_has_pending_query(Channel *t, int fd, int timeout);
+std::optional<query::data> channel_read_query(Channel *t, int fd);
+query::message channel_peek_query(Channel *t, int fd);
+void channel_write_ask(Channel *t, int fd, ask_t *a);
+void channel_write_answer(Channel *t, int fd, const answer::data &a);
+void *channel_get_buffer(Channel *t, size_t n);
+void channel_flush(Channel *t, int fd);
+void channel_reset(Channel *t);
 
 #endif /*!SPROTOCOL_H*/

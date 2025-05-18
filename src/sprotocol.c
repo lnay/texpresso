@@ -34,7 +34,6 @@
 #include <optional>
 
 #define PACK(a,b,c,d) ((d << 24) | (c << 16) | (b << 8) | a)
-#define BUF_SIZE 4096
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
@@ -65,22 +64,7 @@ answer::message answer::data::to_enum() const {
     }, *this));
 };
 
-struct channel_s
-{
-  struct {
-    char buffer[BUF_SIZE];
-    int pos, len;
-  } input;
-  struct {
-    char buffer[BUF_SIZE];
-    int pos;
-  } output;
-  int passed_fd;
-  char *buf;
-  int buf_size;
-};
-
-static ssize_t read_(channel_t *t, int fd, void *data, size_t len)
+static ssize_t read_(Channel *t, int fd, void *data, size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
   int32_t pid;
@@ -126,7 +110,7 @@ static ssize_t read_(channel_t *t, int fd, void *data, size_t len)
   return recvd;
 }
 
-static int buffered_read_at_least(channel_t *t, int fd, char *buf, int atleast, int size)
+static int buffered_read_at_least(Channel *t, int fd, char *buf, int atleast, int size)
 {
   int n;
   char *org = buf, *ok = buf + atleast;
@@ -148,7 +132,7 @@ static int buffered_read_at_least(channel_t *t, int fd, char *buf, int atleast, 
   return (buf - org);
 }
 
-static bool read_all(channel_t *t, int fd, char *buf, int size)
+static bool read_all(Channel *t, int fd, char *buf, int size)
 {
   while (size > 0)
   {
@@ -184,7 +168,7 @@ static void write_all(int fd, const char *buf, int size)
   }
 }
 
-static void cflush(channel_t *c, int fd)
+static void cflush(Channel *c, int fd)
 {
   int pos = c->output.pos;
   if (pos == 0) return;
@@ -192,7 +176,7 @@ static void cflush(channel_t *c, int fd)
   c->output.pos = 0;
 }
 
-static bool refill_at_least(channel_t *c, int fd, int at_least)
+static bool refill_at_least(Channel *c, int fd, int at_least)
 {
   int avail = (c->input.len - c->input.pos);
   if (avail >= at_least)
@@ -221,7 +205,7 @@ static bool refill_at_least(channel_t *c, int fd, int at_least)
 #define HND_SERVER "TEXPRESSOS01"
 #define HND_CLIENT "TEXPRESSOC01"
 
-bool channel_handshake(channel_t *c, int fd)
+bool channel_handshake(Channel *c, int fd)
 {
   char answer[LEN(HND_CLIENT)];
   write_all(fd, HND_SERVER, LEN(HND_SERVER));
@@ -290,24 +274,20 @@ const char *ask_to_string(enum ask q)
   }
 }
 
-channel_t *channel_new(void)
+Channel::Channel()
 {
-  channel_t *c = calloc(sizeof(channel_t), 1);
-  if (!c) mabort();
-  c->buf = malloc(256);
-  if (!c->buf) mabort();
-  c->buf_size = 256;
-  c->passed_fd = -1;
-  return c;
+  this->buf = malloc(256);
+  if (!this->buf) mabort();
+  this->buf_size = 256;
+  this->passed_fd = -1;
 }
 
-void channel_free(channel_t *c)
+Channel::~Channel()
 {
-  free(c->buf);
-  free(c);
+  free(this->buf);
 }
 
-static void resize_buf(channel_t *t)
+static void resize_buf(Channel *t)
 {
   int old_size = t->buf_size;
   int new_size = old_size * 2;
@@ -319,7 +299,7 @@ static void resize_buf(channel_t *t)
   t->buf_size = new_size;
 }
 
-static int cgetc(channel_t *t, int fd)
+static int cgetc(Channel *t, int fd)
 {
   if (t->input.pos == t->input.len)
     if (!refill_at_least(t, fd, 1))
@@ -327,7 +307,7 @@ static int cgetc(channel_t *t, int fd)
   return t->input.buffer[t->input.pos++];
 }
 
-static int read_zstr(channel_t *t, int fd, int *pos)
+static int read_zstr(Channel *t, int fd, int *pos)
 {
   int c, p0 = *pos;
   do {
@@ -340,7 +320,7 @@ static int read_zstr(channel_t *t, int fd, int *pos)
   return p0;
 }
 
-static bool read_bytes(channel_t *t, int fd, int pos, int size)
+static bool read_bytes(Channel *t, int fd, int pos, int size)
 {
   while (t->buf_size < pos + size)
     resize_buf(t);
@@ -361,7 +341,7 @@ static bool read_bytes(channel_t *t, int fd, int pos, int size)
   return read_all(t, fd, &t->buf[pos], size);
 }
 
-static void write_bytes(channel_t *t, int fd, void *buf, int size)
+static void write_bytes(Channel *t, int fd, void *buf, int size)
 {
   if (t->output.pos + size <= BUF_SIZE)
   {
@@ -381,7 +361,7 @@ static void write_bytes(channel_t *t, int fd, void *buf, int size)
   }
 }
 
-static bool try_read_u32(channel_t *t, int fd, uint32_t *tag)
+static bool try_read_u32(Channel *t, int fd, uint32_t *tag)
 {
   if (!refill_at_least(t, fd, 4))
     return 0;
@@ -390,7 +370,7 @@ static bool try_read_u32(channel_t *t, int fd, uint32_t *tag)
   return 1;
 }
 
-static uint32_t read_u32(channel_t *t, int fd)
+static uint32_t read_u32(Channel *t, int fd)
 {
   int avail = t->input.len - t->input.pos;
 
@@ -404,12 +384,12 @@ static uint32_t read_u32(channel_t *t, int fd)
   return tag;
 }
 
-static void write_u32(channel_t *t, int fd, uint32_t u)
+static void write_u32(Channel *t, int fd, uint32_t u)
 {
   write_bytes(t, fd, &u, 4);
 }
 
-static float read_f32(channel_t *t, int fd)
+static float read_f32(Channel *t, int fd)
 {
   if (!refill_at_least(t, fd, 4))
     return 0;
@@ -421,7 +401,7 @@ static float read_f32(channel_t *t, int fd)
   return f;
 }
 
-static void write_f32(channel_t *t, int fd, float f)
+static void write_f32(Channel *t, int fd, float f)
 {
   write_bytes(t, fd, &f, 4);
 }
@@ -466,7 +446,7 @@ void query::data::log(FILE *f)
   }, *this);
 }
 
-bool channel_has_pending_query(channel_t *t, int fd, int timeout)
+bool channel_has_pending_query(Channel *t, int fd, int timeout)
 {
   if (t->input.pos != t->input.len) return 1;
 
@@ -489,7 +469,7 @@ bool channel_has_pending_query(channel_t *t, int fd, int timeout)
   return 1;
 }
 
-query::message channel_peek_query(channel_t *t, int fd)
+query::message channel_peek_query(Channel *t, int fd)
 {
   uint32_t result = read_u32(t, fd);
   if (result == 0)
@@ -498,7 +478,7 @@ query::message channel_peek_query(channel_t *t, int fd)
   return result;
 }
 
-std::optional<query::data> channel_read_query(channel_t *t, int fd)
+std::optional<query::data> channel_read_query(Channel *t, int fd)
 {
   uint32_t tag;
 
@@ -624,7 +604,7 @@ std::optional<query::data> channel_read_query(channel_t *t, int fd)
   // }
 }
 
-void channel_write_ask(channel_t *t, int fd, ask_t *a)
+void channel_write_ask(Channel *t, int fd, ask_t *a)
 {
   write_u32(t, fd, a->tag);
   switch (a->tag)
@@ -634,13 +614,13 @@ void channel_write_ask(channel_t *t, int fd, ask_t *a)
   }
 }
 
-static void write_time(channel_t *t, int fd, struct stat_time tm)
+static void write_time(Channel *t, int fd, struct stat_time tm)
 {
   write_u32(t, fd, tm.sec);
   write_u32(t, fd, tm.nsec);
 }
 
-void channel_write_answer(channel_t *t, int fd, const answer::data &a)
+void channel_write_answer(Channel *t, int fd, const answer::data &a)
 {
     // if (LOG)
     // {
@@ -674,18 +654,18 @@ void channel_write_answer(channel_t *t, int fd, const answer::data &a)
     }, a);
 }
 
-void channel_flush(channel_t *t, int fd)
+void channel_flush(Channel *t, int fd)
 {
   cflush(t, fd);
 }
 
-void channel_reset(channel_t *t)
+void channel_reset(Channel *t)
 {
   t->input.pos = t->input.len = 0;
   t->output.pos = 0;
 }
 
-void *channel_get_buffer(channel_t *t, size_t n)
+void *channel_get_buffer(Channel *t, size_t n)
 {
   while (n > t->buf_size)
     resize_buf(t);
