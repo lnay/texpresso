@@ -225,18 +225,15 @@ struct Channel
   int buf_size;
   Channel();
   ~Channel();
+  bool handshake(int fd);
+  bool has_pending_query(int fd, int timeout);
+  std::optional<query::data> read_query(int fd);
+  query::message peek_query(int fd);
+  void write_ask(int fd, ask_t *a);
+  void write_answer(int fd, const answer::data &a);
+  void *get_buffer(size_t n);
+  void flush(int fd);
+  void reset();
 };
-
-/* Functions */
-
-bool channel_handshake(Channel *c, int fd);
-bool channel_has_pending_query(Channel *t, int fd, int timeout);
-std::optional<query::data> channel_read_query(Channel *t, int fd);
-query::message channel_peek_query(Channel *t, int fd);
-void channel_write_ask(Channel *t, int fd, ask_t *a);
-void channel_write_answer(Channel *t, int fd, const answer::data &a);
-void *channel_get_buffer(Channel *t, size_t n);
-void channel_flush(Channel *t, int fd);
-void channel_reset(Channel *t);
 
 #endif /*!SPROTOCOL_H*/

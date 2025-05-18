@@ -228,7 +228,7 @@ static void prepare_process(fz_context *ctx, struct tex_engine *self)
                           bundle_server_lock(self->bundle),
                           &p->fd);
     p->trace_len = 0;
-    if (!channel_handshake(self->c, p->fd))
+    if (!self->c->handshake(p->fd))
       mabort();
   }
 }
@@ -249,7 +249,7 @@ static void pop_process(fz_context *ctx, struct tex_engine *self)
 {
   process_t *p = get_process(self);
   close_process(p);
-  channel_reset(self->c);
+  self->c->reset();
   self->process_count -= 1;
   mark_t mark =
     self->process_count > 0 ? get_process(self)->snap : self->restart;
@@ -259,7 +259,7 @@ static void pop_process(fz_context *ctx, struct tex_engine *self)
 static std::optional<query::data> read_query(struct tex_engine *self, Channel *t)
 {
   process_t *p = get_process(self);
-  std::optional<query::data> q = channel_read_query(t, p->fd);
+  std::optional<query::data> q = t->read_query(p->fd);
   if (!q.has_value()) {
     fprintf(stderr, "[process] terminating process\n");
     close_process(p);
@@ -521,7 +521,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
                   log_fileentry(ctx, self->log, e);
                   record_seen(self, e, INT_MAX, q.time);
 
-                  channel_write_answer(self->c, p->fd, answer::data(answer::pass{}));
+                  self->c->write_answer(p->fd, answer::data(answer::pass{}));
 
                   return;
                 }
@@ -632,8 +632,8 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
             }
 
             int n = strlen(o.path);
-            memmove(channel_get_buffer(self->c, n), o.path, n);
-            channel_write_answer(self->c, p->fd, answer::data(answer::open{ .size = n }));
+            memmove(self->c->get_buffer(n), o.path, n);
+            self->c->write_answer(p->fd, answer::data(answer::open{ .size = n }));
         },
         [=](query::read r) {
             check_fid(r.fid);
@@ -675,13 +675,13 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
             else if (need_snapshot(ctx, self, q.time)) {} // fork in this case too
             else
             {
-                memmove(channel_get_buffer(self->c, n), data->data + r.pos, n);
-                channel_write_answer(self->c, p->fd, answer::data(answer::read{ .size = n }));
+                memmove(self->c->get_buffer(n), data->data + r.pos, n);
+                self->c->write_answer(p->fd, answer::data(answer::read{ .size = n }));
                 return;
             }
             // if (fork) fprintf(stderr, "read = fork\n");
             // else fprintf(stderr, "read = %d\n", (int)n);
-            channel_write_answer(self->c, p->fd, answer::data(answer::fork{}));
+            self->c->write_answer(p->fd, answer::data(answer::fork{}));
         },
         [=](query::writ w) {
             fileentry_t *e = NULL;
@@ -745,7 +745,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
             else if (self->st.stdout.entry == e)
               editor_append(BUF_OUT, output_data(e), w.pos);
 
-            channel_write_answer(self->c, p->fd, answer::data(answer::done{}));
+            self->c->write_answer(p->fd, answer::data(answer::done{}));
         },
         [=](query::clos c) {
             check_fid(c.fid);
@@ -777,7 +777,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
                 self->st.log.entry = NULL;
             }
 
-            channel_write_answer(self->c, p->fd, answer::data(answer::done{}));
+            self->c->write_answer(p->fd, answer::data(answer::done{}));
         },
         [=](query::size s) {
             check_fid(s.fid);
@@ -785,7 +785,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
             if (e == NULL || e->saved.level < FILE_READ) mabort();
             // if (LOG)
             //   fprintf(stderr, "SIZE = %d (seen = %d)\n", a.size.size, e->seen);
-            channel_write_answer(self->c, p->fd, answer::data(answer::size{
+            self->c->write_answer(p->fd, answer::data(answer::size{
                 .size = (int) entry_data(e)->len // WARNING narrows size_t to int
             }));
         },
@@ -830,14 +830,14 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
               decimate_processes(self);
               p = get_process(self);
             }
-            channel_reset(self->c);
+            self->c->reset();
             self->process_count += 1;
             process_t *p2 = get_process(self);
             p->snap = log_snapshot(ctx, self->log);
             p2->fd = c.fd;
             p2->pid = c.pid;
             p2->trace_len = p->trace_len;
-            channel_write_answer(self->c, p->fd, answer::data(answer::done{}));
+            self->c->write_answer(p->fd, answer::data(answer::done{}));
         },
         [=](query::gpic g) {
             fileentry_t *e = filesystem_lookup(self->fs, g.path);
@@ -845,7 +845,7 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
                 e->pic_cache.type == g.type &&
                 e->pic_cache.page == g.page)
             {
-              channel_write_answer(self->c, p->fd, answer::data(answer::gpic{
+              self->c->write_answer(p->fd, answer::data(answer::gpic{
                 .bounds = {
                     e->pic_cache.bounds[0],
                     e->pic_cache.bounds[1],
@@ -855,13 +855,13 @@ static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &
               }));
             }
             else {
-              channel_write_answer(self->c, p->fd, answer::data(answer::pass{}));
+              self->c->write_answer(p->fd, answer::data(answer::pass{}));
             }
         },
         [=](query::spic s) {
             fileentry_t *e = filesystem_lookup(self->fs, s.path);
             if (e && e->saved.level == FILE_READ) e->pic_cache = s.cache;
-            channel_write_answer(self->c, p->fd, answer::data(answer::done{}));
+            self->c->write_answer(p->fd, answer::data(answer::done{}));
         },
     }, q
   );
@@ -1048,12 +1048,12 @@ static bool engine_step(txp_engine *_self, fz_context *ctx, bool restart_if_need
     int fd = get_process(self)->fd;
     if (fd == -1)
       return 0;
-    if (!channel_has_pending_query(self->c, fd, 10))
+    if (!self->c->has_pending_query(fd, 10))
       return 0;
     try {
       query::data q = read_query(self, self->c).value();
       answer_query(ctx, self, q);
-      channel_flush(self->c, fd);
+      self->c->flush(fd);
       return 1;
     } catch (...) {
       close(fd);
@@ -1163,8 +1163,8 @@ static bool rollback_end(fz_context *ctx, struct tex_engine *self, int *tracep, 
     {
       ask_t a;
       a.tag = C_FLSH;
-      channel_write_ask(self->c, p->fd, &a);
-      channel_flush(self->c, p->fd);
+      self->c->write_ask(p->fd, &a);
+      self->c->flush(p->fd);
       return false;
     }
     trace_len -= 1;
@@ -1205,7 +1205,7 @@ static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
   // - check pending SEEN messages to update vision of the process
   int nothing_seen = 1;
   do {
-    if (!channel_has_pending_query(self->c, p->fd, 10))
+    if (!self->c->has_pending_query(p->fd, 10))
     {
       fprintf(stderr, "[kill] worker might be stuck, killing\n");
       // The process hasn't answered in 10ms
@@ -1214,7 +1214,7 @@ static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
       break;
     }
     // Process only pending SEEN to have an updated view on process state
-    switch (channel_peek_query(self->c, p->fd))
+    switch (self->c->peek_query(p->fd))
     {
       case query::Q_SEEN:
         {
