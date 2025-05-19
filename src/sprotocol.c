@@ -114,7 +114,7 @@ const char *ask_to_string(enum ask q)
 {
   switch (q)
   {
-    CASE(C,FLSH);
+    case C_FLSH: return "FLSH";
   }
 }
 
@@ -311,7 +311,6 @@ bool Channel::handshake(int fd)
 
 /* PROTOCOL DEFINITION */
 
-#define CASE(K,X) case K##_##X: return STR(X)
 Channel::Channel()
 {
   this->buf = malloc(256);
