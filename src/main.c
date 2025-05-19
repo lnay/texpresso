@@ -101,7 +101,7 @@ enum ui_mouse_status {
 };
 
 typedef struct {
-  txp_engine *eng;
+  txp::Engine *eng;
   txp_renderer *doc_renderer;
   SDL_Renderer *sdl_renderer;
   SDL_Window *window;
@@ -183,7 +183,7 @@ static bool advance_engine(fz_context *ctx, ui_state *ui)
   int steps = 10;
   while (need)
   {
-    if (!send(step, ui->eng, ctx, false))
+    if (!send(step, ui->eng, false))
       break;
 
     steps -= 1;
@@ -661,7 +661,7 @@ static void realize_change(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, ps->ctx, path);
+  fileentry_t *e = send(find_file, ui->eng, path);
   if (!e)
   {
     fprintf(stderr, "[command] change %s: file not found, skipping\n", path);
@@ -796,7 +796,7 @@ static void realize_change(struct persistent_state *ps,
   memmove(b->data + offset, op->data, length);
 
   fprintf(stderr, "[command] change %s: changed offset %d\n", path, offset);
-  send(notify_file_changes, ui->eng, ps->ctx, e, offset);
+  send(notify_file_changes, ui->eng, e, offset);
 }
 
 #define BUFFERED_OPS 64
@@ -872,7 +872,7 @@ static void interpret_open(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, ps->ctx, path);
+  fileentry_t *e = send(find_file, ui->eng, path);
   if (!e)
   {
     fprintf(stderr, "[command] open %s: file not found, skipping\n", path);
@@ -903,7 +903,7 @@ static void interpret_open(struct persistent_state *ps,
   if (changed >= 0)
   {
     fprintf(stderr, "[command] open %s: changed offset is %d\n", path, changed);
-    send(notify_file_changes, ui->eng, ps->ctx, e, changed);
+    send(notify_file_changes, ui->eng, e, changed);
   }
 }
 
@@ -919,7 +919,7 @@ static void interpret_close(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, ps->ctx, path);
+  fileentry_t *e = send(find_file, ui->eng, path);
   if (!e)
   {
     fprintf(stderr, "[command] close %s: file not found, skipping\n", path);
@@ -945,7 +945,7 @@ static void interpret_close(struct persistent_state *ps,
   fprintf(stderr, "[command] close %s: closing, changed offset %d\n", path,
           changed);
 
-  send(notify_file_changes, ui->eng, ps->ctx, e, changed);
+  send(notify_file_changes, ui->eng, e, changed);
 }
 
 static uint32_t convert_color(fz_context *ctx, vstack *stack, float frgb[3])
@@ -960,7 +960,7 @@ static uint32_t convert_color(fz_context *ctx, vstack *stack, float frgb[3])
 
 static void display_page(struct persistent_state *ps, ui_state *ui)
 {
-  fz_display_list *dl = send(render_page, ui->eng, ps->ctx, ui->page);
+  fz_display_list *dl = send(render_page, ui->eng, ui->page);
   txp_renderer_set_contents(ps->ctx, ui->doc_renderer, dl);
   fz_drop_display_list(ps->ctx, dl);
   schedule_event(RENDER_EVENT);
@@ -1128,13 +1128,14 @@ bool texpresso_main(struct persistent_state *ps)
   find_tectonic(tectonic_path, ps->exe_path);
   fprintf(stderr, "[info] tectonic path: %s\n", tectonic_path);
 
-  if (doc_ext && strcmp(doc_ext, "pdf") == 0)
-    ui->eng = txp_create_pdf_engine(ps->ctx, ps->doc_name);
-  else if (doc_ext && (strcmp(doc_ext, "dvi") == 0 || strcmp(doc_ext, "xdv") == 0))
-    ui->eng = txp_create_dvi_engine(ps->ctx, tectonic_path, ps->doc_path, ps->doc_name);
-  else
-    ui->eng = txp_create_tex_engine(ps->ctx, tectonic_path,
-                                    ps->inclusion_path, ps->doc_path, ps->doc_name);
+  // Disable other engines for now
+  // if (doc_ext && strcmp(doc_ext, "pdf") == 0)
+  //   ui->eng = txp_create_pdf_engine(ps->ctx, ps->doc_name);
+  // else if (doc_ext && (strcmp(doc_ext, "dvi") == 0 || strcmp(doc_ext, "xdv") == 0))
+  //   ui->eng = txp_create_dvi_engine(ps->ctx, tectonic_path, ps->doc_path, ps->doc_name);
+  // else
+  ui->eng = new txp::TexEngine(*ps->ctx, tectonic_path, ps->inclusion_path,
+                               ps->doc_path, ps->doc_name);
 
   ui->sdl_renderer = ps->renderer;
   ui->doc_renderer = txp_renderer_new(ps->ctx, ui->sdl_renderer);
@@ -1161,7 +1162,7 @@ bool texpresso_main(struct persistent_state *ps)
   ui->last_click_ticks = SDL_GetTicks() - 200000000;
 
   bool quit = 0, reload = 0;
-  send(step, ui->eng, ps->ctx, true);
+  send(step, ui->eng, true);
   render(ps->ctx, ui);
   schedule_event(RELOAD_EVENT);
 
@@ -1190,7 +1191,7 @@ bool texpresso_main(struct persistent_state *ps)
     bool has_event = SDL_PollEvent(&e);
 
     // Process stdin
-    send(begin_changes, ui->eng, ps->ctx);
+    send(begin_changes, ui->eng);
     char buffer[4096];
     int n = -1;
     while (!stdin_eof && poll_stdin() && (n = read(STDIN_FILENO, buffer, 4096)) != 0)
@@ -1229,9 +1230,9 @@ bool texpresso_main(struct persistent_state *ps)
     }
     if (n == 0) stdin_eof = 1;
 
-    if (send(end_changes, ui->eng, ps->ctx))
+    if (send(end_changes, ui->eng))
     {
-      send(step, ui->eng, ps->ctx, true);
+      send(step, ui->eng, true);
       schedule_event(RELOAD_EVENT);
     }
 
@@ -1440,23 +1441,23 @@ bool texpresso_main(struct persistent_state *ps)
             quit = reload = 1;
             continue;
           }
-          send(begin_changes, ui->eng, ps->ctx);
+          send(begin_changes, ui->eng);
           flush_changes(ps, ui);
-          send(detect_changes, ui->eng, ps->ctx);
-          if (send(end_changes, ui->eng, ps->ctx))
+          send(detect_changes, ui->eng);
+          if (send(end_changes, ui->eng))
           {
-            send(step, ui->eng, ps->ctx, true);
+            send(step, ui->eng, true);
             schedule_event(RELOAD_EVENT);
           }
           break;
 
         case RENDER_EVENT:
           render(ps->ctx, ui);
-          send(begin_changes, ui->eng, ps->ctx);
+          send(begin_changes, ui->eng);
           flush_changes(ps, ui);
-          if (send(end_changes, ui->eng, ps->ctx))
+          if (send(end_changes, ui->eng))
           {
-            send(step, ui->eng, ps->ctx, true);
+            send(step, ui->eng, true);
             schedule_event(RELOAD_EVENT);
           }
           break;
@@ -1501,7 +1502,7 @@ bool texpresso_main(struct persistent_state *ps)
     fz_keep_display_list(ps->ctx, ps->initial.display_list);
 
   txp_renderer_free(ps->ctx, ui->doc_renderer);
-  send(destroy, ui->eng, ps->ctx);
+  // delete ui->eng; // Come back to try see if destructor could be called implicitly
 
   return reload;
 }

@@ -35,7 +35,6 @@
 #include <optional>
 #include "engine.h"
 #include "incdvi.h"
-#include "sprotocol.h"
 #include "state.h"
 #include "synctex.h"
 #include "editor.h"
@@ -44,24 +43,7 @@
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
-typedef struct
-{
-  fileentry_t *entry;
-  int position;
-} fence_t;
-
-typedef struct
-{
-  fileentry_t *entry;
-  int seen, time;
-} trace_entry_t;
-
-typedef struct
-{
-  int pid, fd;
-  int trace_len;
-  mark_t snap;
-} process_t;
+using namespace txp;
 
 struct tex_engine
 {
@@ -107,7 +89,7 @@ struct tex_engine
 //
 //
 
-static process_t *get_process(struct tex_engine *t)
+static process_t *get_process(TexEngine *t)
 {
   if (t->process_count == 0)
     mabort();
@@ -130,10 +112,8 @@ static char *last_index(char *path, char needle)
 
 // tex_engine implementation
 
-TXP_ENGINE_DEF_CLASS;
-#define SELF struct tex_engine *self = (struct tex_engine*)_self
 
-static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &q);
+static void answer_query(fz_context *ctx, TexEngine *self, query::data &q);
 
 // Launching processes
 
@@ -215,7 +195,7 @@ static pid_t exec_xelatex(char *tectonic_path, const char *filename,
   return pid;
 }
 
-static void prepare_process(fz_context *ctx, struct tex_engine *self)
+static void prepare_process(fz_context *ctx, TexEngine *self)
 {
   if (self->process_count == 0)
   {
@@ -245,7 +225,7 @@ static void close_process(process_t *p)
   }
 }
 
-static void pop_process(fz_context *ctx, struct tex_engine *self)
+static void pop_process(fz_context *ctx, TexEngine *self)
 {
   process_t *p = get_process(self);
   close_process(p);
@@ -256,7 +236,7 @@ static void pop_process(fz_context *ctx, struct tex_engine *self)
   log_rollback(ctx, self->log, mark);
 }
 
-static std::optional<query::data> read_query(struct tex_engine *self, Channel *t)
+static std::optional<query::data> read_query(TexEngine *self, Channel *t)
 {
   process_t *p = get_process(self);
   std::optional<query::data> q = t->read_query(p->fd);
@@ -267,7 +247,7 @@ static std::optional<query::data> read_query(struct tex_engine *self, Channel *t
   return q;
 }
 
-static void decimate_processes(struct tex_engine *self)
+static void decimate_processes(TexEngine *self)
 {
   fprintf(stderr, "before process decimation:\n");
   for  (int i = 0; i < self->process_count; ++i)
@@ -306,17 +286,16 @@ static void decimate_processes(struct tex_engine *self)
 
 // Engine class implementation
 
-static void engine_destroy(txp_engine *_self, fz_context *ctx)
+TexEngine::~TexEngine()
 {
-  SELF;
-  while (self->process_count > 0)
-    pop_process(ctx, self);
-  incdvi_free(ctx, self->dvi);
-  synctex_free(ctx, self->stex);
-  fz_free(ctx, self->name);
-  fz_free(ctx, self->tectonic_path);
-  fz_free(ctx, self->inclusion_path);
-  fz_free(ctx, self);
+  while (this->process_count > 0)
+    pop_process(&this->ctx, this);
+  incdvi_free(&this->ctx, this->dvi);
+  synctex_free(&this->ctx, this->stex);
+  fz_free(&this->ctx, this->name);
+  fz_free(&this->ctx, this->tectonic_path);
+  fz_free(&this->ctx, this->inclusion_path);
+  fz_free(&this->ctx, this);
 }
 
 static const char *expand_path(const char **inclusion_path, const char *name, char buffer[1024])
@@ -373,7 +352,7 @@ static void check_fid(file_id fid)
     mabort();
 }
 
-static void record_seen(struct tex_engine *self, fileentry_t *entry, int seen, int time)
+static void record_seen(TexEngine *self, fileentry_t *entry, int seen, int time)
 {
   process_t *p = get_process(self);
 
@@ -427,7 +406,7 @@ static fz_buffer *output_data(fileentry_t *e)
 }
 
 static const char *
-lookup_path(struct tex_engine *self, const char *path, char buf[1024], struct stat *st)
+lookup_path(TexEngine *self, const char *path, char buf[1024], struct stat *st)
 {
   struct stat st1;
   if (st == NULL)
@@ -445,7 +424,7 @@ lookup_path(struct tex_engine *self, const char *path, char buf[1024], struct st
   return fs_path;
 }
 
-static bool need_snapshot(fz_context *ctx, struct tex_engine *self, int time)
+static bool need_snapshot(fz_context *ctx, TexEngine *self, int time)
 {
   // Fences are pending: don't snapshot now
   if (self->fence_pos != -1)
@@ -493,7 +472,7 @@ static bool need_snapshot(fz_context *ctx, struct tex_engine *self, int time)
   return time > 500 + last_time;
 }
 
-static void answer_query(fz_context *ctx, struct tex_engine *self, query::data &q)
+static void answer_query(fz_context *ctx, TexEngine *self, query::data &q)
 {
   process_t *p = get_process(self);
   // quite long, maybe overload an actual function?
@@ -880,7 +859,7 @@ static void revert_trace(trace_entry_t *te)
   te->entry->seen = te->seen;
 }
 
-static void rollback_processes(fz_context *ctx, struct tex_engine *self, int reverted, int trace)
+static void rollback_processes(fz_context *ctx, TexEngine *self, int reverted, int trace)
 {
   fprintf(
     stderr,
@@ -957,7 +936,7 @@ static bool possible_fence(trace_entry_t *te)
   return 1;
 }
 
-static int compute_fences(fz_context *ctx, struct tex_engine *self, int trace, int offset)
+static int compute_fences(fz_context *ctx, TexEngine *self, int trace, int offset)
 {
   self->fence_pos = -1;
 
@@ -1013,51 +992,47 @@ static int compute_fences(fz_context *ctx, struct tex_engine *self, int trace, i
   return trace;
 }
 
-static int engine_page_count(txp_engine *_self)
+int txp::TexEngine::page_count()
 {
-  SELF;
-  return incdvi_page_count(self->dvi);
+  return incdvi_page_count(this->dvi);
 }
 
-static fz_display_list *engine_render_page(txp_engine *_self, fz_context *ctx, int page)
+fz_display_list *txp::TexEngine::render_page(int page)
 {
-  SELF;
-
   float pw, ph;
   bool landscape;
-  fz_buffer *data = self->st.document.entry->saved.data;
-  incdvi_page_dim(self->dvi, data, page, &pw, &ph, &landscape);
+  fz_buffer *data = this->st.document.entry->saved.data;
+  incdvi_page_dim(this->dvi, data, page, &pw, &ph, &landscape);
 
   fz_rect box = fz_make_rect(0, 0, pw, ph);
-  fz_display_list *dl = fz_new_display_list(ctx, box);
-  fz_device *dev = fz_new_list_device(ctx, dl);
-  incdvi_render_page(ctx, self->dvi, data, page, dev);
-  fz_close_device(ctx, dev);
-  fz_drop_device(ctx, dev);
+  fz_display_list *dl = fz_new_display_list(&this->ctx, box);
+  fz_device *dev = fz_new_list_device(&this->ctx, dl);
+  incdvi_render_page(&this->ctx, this->dvi, data, page, dev);
+  fz_close_device(&this->ctx, dev);
+  fz_drop_device(&this->ctx, dev);
   return dl;
 }
 
-static bool engine_step(txp_engine *_self, fz_context *ctx, bool restart_if_needed)
+bool txp::TexEngine::step(bool restart_if_needed)
 {
-  SELF;
   if (restart_if_needed)
-    prepare_process(ctx, self);
+    prepare_process(&this->ctx, this);
 
-  if (engine_get_status(_self) == DOC_RUNNING)
+  if (this->get_status() == DOC_RUNNING)
   {
-    int fd = get_process(self)->fd;
+    int fd = get_process(this)->fd;
     if (fd == -1)
       return 0;
-    if (!self->c->has_pending_query(fd, 10))
+    if (!this->c->has_pending_query(fd, 10))
       return 0;
     try {
-      query::data q = read_query(self, self->c).value();
-      answer_query(ctx, self, q);
-      self->c->flush(fd);
+      query::data q = read_query(this, this->c).value();
+      answer_query(&this->ctx, this, q);
+      this->c->flush(fd);
       return 1;
     } catch (...) {
       close(fd);
-      get_process(self)->fd = -1;
+      get_process(this)->fd = -1;
       return 0;
     }
   }
@@ -1065,7 +1040,7 @@ static bool engine_step(txp_engine *_self, fz_context *ctx, bool restart_if_need
   return 0;
 }
 
-static int scan_entry(fz_context *ctx, struct tex_engine *self, fileentry_t *e)
+static int scan_entry(fz_context *ctx, TexEngine *self, fileentry_t *e)
 {
   if (e->saved.level < FILE_READ || e->fs_stat.st_ino == 0 || e->edit_data)
     return -1;
@@ -1132,7 +1107,7 @@ static int scan_entry(fz_context *ctx, struct tex_engine *self, fileentry_t *e)
 
 #define NOT_IN_TRANSACTION (-2)
 
-static void rollback_begin(fz_context *ctx, struct tex_engine *self)
+static void rollback_begin(fz_context *ctx, TexEngine *self)
 {
   // Check if already in a transaction
   if (self->rollback.trace_len != NOT_IN_TRANSACTION)
@@ -1143,7 +1118,7 @@ static void rollback_begin(fz_context *ctx, struct tex_engine *self)
   self->rollback.flush = 0;
 }
 
-static bool rollback_end(fz_context *ctx, struct tex_engine *self, int *tracep, int *offsetp)
+static bool rollback_end(fz_context *ctx, TexEngine *self, int *tracep, int *offsetp)
 {
   int trace_len = self->rollback.trace_len;
   self->rollback.trace_len = NOT_IN_TRANSACTION;
@@ -1187,7 +1162,7 @@ static bool rollback_end(fz_context *ctx, struct tex_engine *self, int *tracep, 
 // Return false if some contents had not been observed: caller should recheck
 // for changed contents.
 // Return true otherwise (process is ready to be flushed).
-static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
+static bool process_pending_messages(fz_context *ctx, TexEngine *self)
 {
   // If the process is marked ready to flush, seen messages have already been
   // consumed
@@ -1238,7 +1213,7 @@ static bool process_pending_messages(fz_context *ctx, struct tex_engine *self)
   return nothing_seen;
 }
 
-static void rollback_add_change(fz_context *ctx, struct tex_engine *self, fileentry_t *e, int changed)
+static void rollback_add_change(fz_context *ctx, TexEngine *self, fileentry_t *e, int changed)
 {
   int trace_len = self->rollback.trace_len;
   // if (changed > 0) changed--;
@@ -1282,104 +1257,86 @@ static void rollback_add_change(fz_context *ctx, struct tex_engine *self, fileen
   self->rollback.offset = changed;
 }
 
-static void engine_notify_file_changes(txp_engine *_self,
-                                       fz_context *ctx,
-                                       fileentry_t *entry,
-                                       int offset)
+void txp::TexEngine::notify_file_changes(fileentry_t *entry, int offset)
 {
-  SELF;
-  rollback_add_change(ctx, self, entry, offset);
+  rollback_add_change(&this->ctx, this, entry, offset);
 }
 
-static void engine_begin_changes(txp_engine *_self, fz_context *ctx)
+void txp::TexEngine::begin_changes()
 {
-  SELF;
-  rollback_begin(ctx, self);
+  rollback_begin(&this->ctx, this);
 }
 
-static void engine_detect_changes(txp_engine *_self, fz_context *ctx)
+void txp::TexEngine::detect_changes()
 {
-  SELF;
-
   fileentry_t *e;
-  for (int index = 0; (e = filesystem_scan(self->fs, &index));)
+  for (int index = 0; (e = filesystem_scan(this->fs, &index));)
   {
-    int changed = scan_entry(ctx, self, e);
+    int changed = scan_entry(&this->ctx, this, e);
     if (changed > -1)
-      rollback_add_change(ctx, self, e, changed);
+      rollback_add_change(&this->ctx, this, e, changed);
   }
 }
 
-static bool engine_end_changes(txp_engine *_self, fz_context *ctx)
+bool txp::TexEngine::end_changes()
 {
-  SELF;
   int reverted, trace, offset;
 
-  if (!rollback_end(ctx, self, &reverted, &offset))
-    return false;
+  if (!rollback_end(&this->ctx, this, &reverted, &offset)) return false;
 
-  trace = reverted >= 0 ? compute_fences(ctx, self, reverted, offset) : 0;
-  rollback_processes(ctx, self, reverted, trace);
+  trace = reverted >= 0 ? compute_fences(&this->ctx, this, reverted, offset) : 0;
+  rollback_processes(&this->ctx, this, reverted, trace);
 
   return true;
 }
 
-static txp_engine_status engine_get_status(txp_engine *_self)
+txp_engine_status txp::TexEngine::get_status()
 {
-  SELF;
-  if (self->process_count == 0)
-    return DOC_TERMINATED;
-  return get_process(self)->fd > -1 ? DOC_RUNNING : DOC_TERMINATED;
+  if (this->process_count == 0) return DOC_TERMINATED;
+  return get_process(this)->fd > -1 ? DOC_RUNNING : DOC_TERMINATED;
 }
 
-static float engine_scale_factor(txp_engine *_self)
+float txp::TexEngine::scale_factor()
 {
-  SELF;
-  return incdvi_tex_scale_factor(self->dvi);
+  return incdvi_tex_scale_factor(this->dvi);
 }
 
-static synctex_t *engine_synctex(txp_engine *_self, fz_buffer **buf)
+synctex_t *txp::TexEngine::synctex(fz_buffer **buf)
 {
-  SELF;
   if (buf)
-    *buf = self->st.synctex.entry ? entry_data(self->st.synctex.entry) : NULL;
-  return self->stex;
+    *buf = this->st.synctex.entry ? entry_data(this->st.synctex.entry) : NULL;
+  return this->stex;
 }
 
-static fileentry_t *engine_find_file(txp_engine *_self, fz_context *ctx, const char *path)
+fileentry_t *txp::TexEngine::find_file(const char *path)
 {
-  SELF;
-  return filesystem_lookup_or_create(ctx, self->fs, path);
+  return filesystem_lookup_or_create(&this->ctx, this->fs, path);
 }
 
-txp_engine *txp_create_tex_engine(fz_context *ctx,
-                                  const char *tectonic_path,
-                                  const char *inclusion_path,
-                                  const char *tex_dir,
-                                  const char *tex_name)
+txp::TexEngine::TexEngine(fz_context &ctx,
+                          const char *tectonic_path,
+                          const char *inclusion_path,
+                          const char *tex_dir,
+                          const char *tex_name): ctx(ctx)
 {
-  struct tex_engine *self = fz_malloc_struct(ctx, struct tex_engine);
-  self->_class = &_class;
+  this->name = fz_strdup(&ctx, tex_name);
+  this->tectonic_path = fz_strdup(&ctx, tectonic_path);
+  this->inclusion_path = fz_strdup(&ctx, inclusion_path ? inclusion_path : "");
+  state_init(&this->st);
+  this->fs = filesystem_new(&ctx);
+  this->log = log_new(&ctx);
+  this->trace = NULL;
+  this->trace_cap = 0;
+  this->fence_pos = -1;
+  this->restart = log_snapshot(&ctx, this->log);
+  this->c = new Channel();
+  this->process_count = 0;
 
-  self->name = fz_strdup(ctx, tex_name);
-  self->tectonic_path = fz_strdup(ctx, tectonic_path);
-  self->inclusion_path = fz_strdup(ctx, inclusion_path ? inclusion_path : "");
-  state_init(&self->st);
-  self->fs = filesystem_new(ctx);
-  self->log = log_new(ctx);
-  self->trace = NULL;
-  self->trace_cap = 0;
-  self->fence_pos = -1;
-  self->restart = log_snapshot(ctx, self->log);
-  self->c = new Channel();
-  self->process_count = 0;
+  this->bundle = bundle_server_start(&ctx, tectonic_path, tex_dir);
+  this->dvi = incdvi_new(&ctx, bundle_server_hooks(this->bundle));
 
-  self->bundle = bundle_server_start(ctx, tectonic_path, tex_dir);
-  self->dvi = incdvi_new(ctx, bundle_server_hooks(self->bundle));
-
-  self->stex = synctex_new(ctx);
-  self->rollback.trace_len = NOT_IN_TRANSACTION;
+  this->stex = synctex_new(&ctx);
+  this->rollback.trace_len = NOT_IN_TRANSACTION;
 
   signal(SIGCHLD, SIG_IGN);
-  return (txp_engine*)self;
 }

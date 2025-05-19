@@ -2,6 +2,8 @@
 #define GENERIC_ENGINE_H_
 #include "state.h"
 #ifdef __cplusplus
+// needed by TexEngine:
+#include "sprotocol.h"
 extern "C" {
 #endif
 /*
@@ -32,8 +34,8 @@ extern "C" {
 #include "incdvi.h"
 #include "synctex.h"
 
-#define send(method, ...) \
-  (send__extract_first(__VA_ARGS__, NULL)->_class->method((txp_engine*)__VA_ARGS__))
+#define send(method, engine, ...) \
+  (engine->method(__VA_ARGS__))
 
 #define send__extract_first(x, ...) (x)
 
@@ -77,6 +79,106 @@ struct txp_engine_class
   void (*notify_file_changes)(txp_engine *self, fz_context *ctx, fileentry_t *entry, int offset);
 };
 
+namespace txp
+{
+class Engine
+{
+public:
+  virtual ~Engine() {};
+  virtual bool step(bool restart_if_needed) = 0;
+  virtual void begin_changes() = 0;
+  virtual void detect_changes() = 0;
+  virtual bool end_changes() = 0;
+  virtual int page_count() = 0;
+  virtual fz_display_list *render_page(int page) = 0;
+  virtual txp_engine_status get_status() = 0;
+  virtual float scale_factor() = 0;
+  virtual synctex_t *synctex(fz_buffer **buf) = 0;
+  virtual fileentry_t *find_file(const char *path) = 0;
+  virtual void notify_file_changes(fileentry_t *entry, int offset) = 0;
+};
+
+
+typedef struct
+{
+  int pid, fd;
+  int trace_len;
+  mark_t snap;
+} process_t;
+typedef struct
+{
+  fileentry_t *entry;
+  int position;
+} fence_t;
+typedef struct
+{
+  fileentry_t *entry;
+  int seen, time;
+} trace_entry_t;
+
+class TexEngine : public Engine
+{
+public:
+  fz_context &ctx;
+  TexEngine(fz_context &ctx,
+            const char *tectonic_path,
+            const char *inclusion_path,
+            const char *tex_dir,
+            const char *tex_name);
+  ~TexEngine();
+  bool step(bool restart_if_needed) override;
+  void begin_changes() override;
+  void detect_changes() override;
+  bool end_changes() override;
+  int page_count() override;
+  fz_display_list *render_page(int page) override;
+  txp_engine_status get_status() override;
+  float scale_factor() override;
+  synctex_t *synctex(fz_buffer **buf) override;
+  fileentry_t *find_file(const char *path) override;
+  void notify_file_changes(fileentry_t *entry, int offset) override;
+// private:
+  char *name;
+  char *tectonic_path;
+  char *inclusion_path;
+  filesystem_t *fs;
+  state_t st;
+  log_t *log;
+
+  Channel *c;
+  process_t processes[32];
+  int process_count;
+
+  trace_entry_t *trace;
+  int trace_cap;
+  fence_t fences[16];
+  int fence_pos;
+  mark_t restart;
+
+  bundle_server *bundle;
+  incdvi_t *dvi;
+  synctex_t *stex;
+
+  struct {
+    int trace_len, offset, flush;
+  } rollback;
+};
+// class PDFEngine : Engine
+// {
+//   fz_context &ctx;
+//   PDFEngine(fz_context *ctx, const char *pdf_path);
+//   ~PDFEngine();
+// };
+// class DVIEngine : Engine
+// {
+//   fz_context &ctx;
+//   DVIEngine(fz_context *ctx,
+//             const char *tectonic_path,
+//             const char *dvi_dir,
+//             const char *dvi_path);
+//   ~DVIEngine();
+// };
+}
 #define TXP_ENGINE_DEF_CLASS                                                \
   static void engine_destroy(txp_engine *_self, fz_context *ctx);           \
   static fz_display_list *engine_render_page(txp_engine *_self,             \
