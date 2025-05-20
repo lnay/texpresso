@@ -246,9 +246,8 @@ private:
   bool read_bytes(int fd, int pos, int size);
   void write_bytes(int fd, void *buf, int size);
   bool try_read_u32(int fd, uint32_t *tag);
-  uint32_t read_u32(int fd);
+  template<typename T> T read_item(int fd);
   void write_u32(int fd, uint32_t u);
-  float read_f32(int fd);
   void write_f32(int fd, float f);
 };
 

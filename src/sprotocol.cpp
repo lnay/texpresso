@@ -213,11 +213,9 @@ ssize_t Channel::read_(const int fd, void *data, const size_t len)
     int *fds0 = (int*)CMSG_DATA(cm);
     int nfds = (cm->cmsg_len - CMSG_LEN(0)) / sizeof(int);
 
-    if (nfds != 1)
-      abort();
+    if (nfds != 1) abort();
 
-    if (this->passed_fd != -1)
-      abort();
+    if (this->passed_fd != -1) abort();
       //close(t->passed_fd);
     this->passed_fd = fds0[0];
   }
@@ -300,8 +298,7 @@ bool Channel::handshake(const int fd)
 {
   char answer[LEN(HND_CLIENT)];
   write_all(fd, HND_SERVER, LEN(HND_SERVER));
-  if (!this->read_all(fd, answer, LEN(HND_CLIENT)))
-    return true;
+  if (!this->read_all(fd, answer, LEN(HND_CLIENT))) return true;
   this->input.len = this->input.pos = 0;
   this->output.pos = 0;
   return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
@@ -400,16 +397,14 @@ bool Channel::try_read_u32(const int fd, uint32_t *tag)
   return 1;
 }
 
-uint32_t Channel::read_u32(const int fd)
+template<typename T>
+T Channel::read_item(const int fd)
 {
-  int avail = this->input.len - this->input.pos;
-
-  if (!this->refill_at_least(fd, 4))
-    return 0;
+  if (!this->refill_at_least(fd, sizeof(T))) return 0;
 
   uint32_t tag;
-  memcpy(&tag, this->input.buffer + this->input.pos, 4);
-  this->input.pos += 4;
+  memcpy(&tag, this->input.buffer + this->input.pos, sizeof(T));
+  this->input.pos += sizeof(T);
 
   return tag;
 }
@@ -417,18 +412,6 @@ uint32_t Channel::read_u32(const int fd)
 void Channel::write_u32(const int fd, uint32_t u)
 {
   this->write_bytes(fd, &u, 4);
-}
-
-float Channel::read_f32(const int fd)
-{
-  if (!this->refill_at_least(fd, 4))
-    return 0;
-
-  float f;
-  memcpy(&f, this->input.buffer + this->input.pos, 4);
-  this->input.pos += 4;
-
-  return f;
 }
 
 void Channel::write_f32(const int fd, float f)
@@ -458,9 +441,8 @@ bool Channel::has_pending_query(const int fd, int timeout)
 
 query::message Channel::peek_query(const int fd)
 {
-  uint32_t result = this->read_u32(fd);
-  if (result == 0)
-    abort();
+  uint32_t result = this->read_item<uint32_t>(fd);
+  if (result == 0) abort();
   this->input.pos -= 4;
   return result;
 }
@@ -470,14 +452,14 @@ std::optional<query::data> Channel::read_query(const int fd)
   uint32_t tag;
 
   if (!this->try_read_u32(fd, &tag)) return {};
-  int time = this->read_u32(fd);
+  int time = this->read_item<uint32_t>(fd);
   int pos = 0;
   switch (tag)
   {
     case query::Q_OPEN:
     {
         fprintf(stderr, "[info] Reading OPEN");
-        file_id fid = this->read_u32(fd);
+        file_id fid = this->read_item<uint32_t>(fd);
         int pos_path = this->read_zstr(fd, &pos);
         int pos_mode = this->read_zstr(fd, &pos);
 
@@ -492,18 +474,18 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading READ");
         return query::data(time, query::read {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
-            .size = static_cast<file_id>(this->read_u32(fd)),
+            .fid = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .pos = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .size = static_cast<file_id>(this->read_item<uint32_t>(fd)),
         });
     }
     case query::Q_WRIT:
     {
         fprintf(stderr, "[info] Reading WRIT");
         query::writ wr {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
-            .size = static_cast<file_id>(this->read_u32(fd)),
+            .fid = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .pos = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .size = static_cast<file_id>(this->read_item<uint32_t>(fd)),
         };
         if (!this->read_bytes(fd, 0, wr.size)) return {};
         wr.buf = this->buf;
@@ -513,7 +495,7 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading CLOS");
         query::clos cl {
-            .fid = static_cast<file_id>(this->read_u32(fd))
+            .fid = static_cast<file_id>(this->read_item<uint32_t>(fd))
         };
         return query::data(time, cl);
     }
@@ -521,7 +503,7 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading SIZE");
         query::size si {
-            .fid = static_cast<file_id>(this->read_u32(fd))
+            .fid = static_cast<file_id>(this->read_item<uint32_t>(fd))
         };
         return query::data(time, si);
     }
@@ -529,8 +511,8 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading SEEN");
         query::seen se {
-            .fid = static_cast<file_id>(this->read_u32(fd)),
-            .pos = static_cast<file_id>(this->read_u32(fd)),
+            .fid = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .pos = static_cast<file_id>(this->read_item<uint32_t>(fd)),
         };
         return query::data(time, se);
     }
@@ -540,8 +522,8 @@ std::optional<query::data> Channel::read_query(const int fd)
         int pos_path = this->read_zstr(fd, &pos);
         query::gpic gp {
             .path = &this->buf[pos_path],
-            .type = static_cast<file_id>(this->read_u32(fd)),
-            .page = static_cast<file_id>(this->read_u32(fd)),
+            .type = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .page = static_cast<file_id>(this->read_item<uint32_t>(fd)),
         };
         return query::data(time, gp);
     }
@@ -552,13 +534,13 @@ std::optional<query::data> Channel::read_query(const int fd)
         query::spic sp {
             .path = &this->buf[pos_path],
             .cache = {
-                .type = static_cast<file_id>(this->read_u32(fd)),
-                .page = static_cast<file_id>(this->read_u32(fd)),
+                .type = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+                .page = static_cast<file_id>(this->read_item<uint32_t>(fd)),
                 .bounds = {
-                    this->read_f32(fd),
-                    this->read_f32(fd),
-                    this->read_f32(fd),
-                    this->read_f32(fd),
+                    this->read_item<float>(fd),
+                    this->read_item<float>(fd),
+                    this->read_item<float>(fd),
+                    this->read_item<float>(fd),
                 }
             }
         };
@@ -568,7 +550,7 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading CHLD");
         query::chld ch {
-            .pid = static_cast<file_id>(this->read_u32(fd)),
+            .pid = static_cast<file_id>(this->read_item<uint32_t>(fd)),
             .fd = this->passed_fd,
         };
         if (ch.fd == -1) abort();
