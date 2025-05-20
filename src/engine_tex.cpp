@@ -33,7 +33,7 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <optional>
-#include "engine.h"
+#include "engine.hpp"
 #include "incdvi.h"
 #include "state.h"
 #include "synctex.h"

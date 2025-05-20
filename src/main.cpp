@@ -32,7 +32,7 @@
 #include "incdvi.h"
 #include "renderer.h"
 #include "sprotocol.h"
-#include "engine.h"
+#include "engine.hpp"
 #include "logo.h"
 #include "driver.h"
 #include "synctex.h"

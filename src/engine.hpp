@@ -1,11 +1,8 @@
 #ifndef GENERIC_ENGINE_H_
 #define GENERIC_ENGINE_H_
 #include "state.h"
-#ifdef __cplusplus
 // needed by TexEngine:
 #include "sprotocol.h"
-extern "C" {
-#endif
 /*
  * MIT License
  *
@@ -79,12 +76,11 @@ struct txp_engine_class
   void (*notify_file_changes)(txp_engine *self, fz_context *ctx, fileentry_t *entry, int offset);
 };
 
-namespace txp
-{
+namespace txp {
 class Engine
 {
 public:
-  virtual ~Engine() {};
+  virtual ~Engine() = default;
   virtual bool step(bool restart_if_needed) = 0;
   virtual void begin_changes() = 0;
   virtual void detect_changes() = 0;
@@ -212,7 +208,4 @@ public:
       .notify_file_changes = engine_notify_file_changes,                    \
   }
 
-#ifdef __cplusplus
-}
-#endif
 #endif // GENERIC_ENGINE_H_

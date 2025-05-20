@@ -24,7 +24,7 @@
 
 #include <stdlib.h>
 #include <mupdf/fitz.h>
-#include "engine.h"
+#include "engine.hpp"
 
 struct pdf_engine
 {
