@@ -157,7 +157,7 @@ void query::data::log(FILE *f)
   }, *this);
 }
 
-static void write_all(int fd, const char *buf, int size)
+static void write_all(const int fd, const char *buf, int size)
 {
   while (size > 0)
   {
@@ -179,7 +179,7 @@ static void write_all(int fd, const char *buf, int size)
   }
 }
 
-ssize_t Channel::read_(int fd, void *data, size_t len)
+ssize_t Channel::read_(const int fd, void *data, const size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
   int32_t pid;
@@ -247,50 +247,48 @@ ssize_t Channel::read_(int fd, void *data, size_t len)
 //   return (buf - org);
 // }
 
-bool Channel::read_all(int fd, char *buf, int size)
+bool Channel::read_all(const int fd, char *buf, ssize_t size)
 {
   while (size > 0)
   {
-    int n = this->read_(fd, buf, size);
-    if (n == 0)
-      return 0;
+    const ssize_t n = this->read_(fd, buf, size);
+    if (n == 0) return false;
 
     buf += n;
     size -= n;
   }
-  return 1;
+  return true;
 }
 
-void Channel::cflush(int fd)
+void Channel::cflush(const int fd)
 {
-  int pos = this->output.pos;
+  const int pos = this->output.pos;
   if (pos == 0) return;
   write_all(fd, this->output.buffer, pos);
   this->output.pos = 0;
 }
 
-bool Channel::refill_at_least(int fd, int at_least)
+bool Channel::refill_at_least(const int fd, const int at_least)
 {
-  int avail = (this->input.len - this->input.pos);
-  if (avail >= at_least)
-    return 1;
+  size_t avail = (this->input.len - this->input.pos);
+  if (avail >= at_least) return true;
 
   memmove(this->input.buffer, this->input.buffer + this->input.pos, avail);
 
   this->input.pos = 0;
   while (avail < at_least)
   {
-    int n = this->read_(fd, this->input.buffer + avail, BUF_SIZE - avail);
+    const ssize_t n = this->read_(fd, this->input.buffer + avail, BUF_SIZE - avail);
     if (n == 0)
     {
       this->input.len = avail;
-      return 0;
+      return false;
     }
     avail += n;
   }
 
   this->input.len = avail;
-  return 1;
+  return true;
 }
 
 /* HANDSHAKE */
@@ -298,12 +296,12 @@ bool Channel::refill_at_least(int fd, int at_least)
 #define HND_SERVER "TEXPRESSOS01"
 #define HND_CLIENT "TEXPRESSOC01"
 
-bool Channel::handshake(int fd)
+bool Channel::handshake(const int fd)
 {
   char answer[LEN(HND_CLIENT)];
   write_all(fd, HND_SERVER, LEN(HND_SERVER));
   if (!this->read_all(fd, answer, LEN(HND_CLIENT)))
-    return 0;
+    return true;
   this->input.len = this->input.pos = 0;
   this->output.pos = 0;
   return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
@@ -313,7 +311,7 @@ bool Channel::handshake(int fd)
 
 Channel::Channel()
 {
-  this->buf = malloc(256);
+  this->buf = static_cast<char*>(malloc(256));
   if (!this->buf) mabort();
   this->buf_size = 256;
   this->passed_fd = -1;
@@ -326,27 +324,23 @@ Channel::~Channel()
 
 void Channel::resize_buf()
 {
-  int old_size = this->buf_size;
-  int new_size = old_size * 2;
-  char *buf = malloc(new_size);
-  if (!buf) mabort();
-  memcpy(buf, this->buf, old_size);
-  free(this->buf);
-  this->buf = buf;
+  const size_t new_size = this->buf_size * 2;
+
+  this->buf = static_cast<char*>(realloc(this->buf, new_size));
+  if (!this->buf) mabort();
   this->buf_size = new_size;
 }
 
-int Channel::cgetc(int fd)
+char Channel::cgetc(const int fd)
 {
-  if (this->input.pos == this->input.len)
-    if (!this->refill_at_least(fd, 1))
-      return 0;
+  if ((this->input.pos == this->input.len) && (!this->refill_at_least(fd, 1))) return 0;
   return this->input.buffer[this->input.pos++];
 }
 
-int Channel::read_zstr(int fd, int *pos)
+int Channel::read_zstr(const int fd, int *pos)
 {
-  int c, p0 = *pos;
+  const int p0 = *pos;
+  char c;
   do {
     if (*pos == this->buf_size) this->resize_buf();
     c = this->cgetc(fd);
@@ -356,12 +350,12 @@ int Channel::read_zstr(int fd, int *pos)
   return p0;
 }
 
-bool Channel::read_bytes(int fd, int pos, int size)
+bool Channel::read_bytes(const int fd, int pos, int size)
 {
   while (this->buf_size < pos + size)
     this->resize_buf();
 
-  int ipos = this->input.pos, ilen = this->input.len;
+  const size_t ipos = this->input.pos, ilen = this->input.len;
   if (ipos + size <= ilen)
   {
     memcpy(&this->buf[pos], this->input.buffer + ipos, size);
@@ -369,7 +363,7 @@ bool Channel::read_bytes(int fd, int pos, int size)
     return 1;
   }
 
-  int isize = ilen - ipos;
+  size_t isize = ilen - ipos;
   memcpy(&this->buf[pos], this->input.buffer + ipos, isize);
   pos += isize;
   size -= isize;
@@ -377,7 +371,7 @@ bool Channel::read_bytes(int fd, int pos, int size)
   return this->read_all(fd, &this->buf[pos], size);
 }
 
-void Channel::write_bytes(int fd, void *buf, int size)
+void Channel::write_bytes(const int fd, void *buf, int size)
 {
   if (this->output.pos + size <= BUF_SIZE)
   {
@@ -389,7 +383,7 @@ void Channel::write_bytes(int fd, void *buf, int size)
   this->cflush(fd);
 
   if (size > BUF_SIZE)
-    write_all(fd, buf, size);
+    write_all(fd, (char*) buf, size);
   else
   {
     memcpy(this->output.buffer, buf, size);
@@ -397,7 +391,7 @@ void Channel::write_bytes(int fd, void *buf, int size)
   }
 }
 
-bool Channel::try_read_u32(int fd, uint32_t *tag)
+bool Channel::try_read_u32(const int fd, uint32_t *tag)
 {
   if (!this->refill_at_least(fd, 4))
     return 0;
@@ -406,7 +400,7 @@ bool Channel::try_read_u32(int fd, uint32_t *tag)
   return 1;
 }
 
-uint32_t Channel::read_u32(int fd)
+uint32_t Channel::read_u32(const int fd)
 {
   int avail = this->input.len - this->input.pos;
 
@@ -420,12 +414,12 @@ uint32_t Channel::read_u32(int fd)
   return tag;
 }
 
-void Channel::write_u32(int fd, uint32_t u)
+void Channel::write_u32(const int fd, uint32_t u)
 {
   this->write_bytes(fd, &u, 4);
 }
 
-float Channel::read_f32(int fd)
+float Channel::read_f32(const int fd)
 {
   if (!this->refill_at_least(fd, 4))
     return 0;
@@ -437,35 +431,32 @@ float Channel::read_f32(int fd)
   return f;
 }
 
-void Channel::write_f32(int fd, float f)
+void Channel::write_f32(const int fd, float f)
 {
   this->write_bytes(fd, &f, 4);
 }
 
-bool Channel::has_pending_query(int fd, int timeout)
+bool Channel::has_pending_query(const int fd, int timeout)
 {
-  if (this->input.pos != this->input.len) return 1;
+  if (this->input.pos != this->input.len) return true;
 
   struct pollfd pfd;
   int n;
-  while(1)
+  while(true)
   {
     pfd.fd = fd;
     pfd.events = POLLRDNORM;
     pfd.revents = 0;
     n = poll(&pfd, 1, timeout);
-    if (!(n == -1 && errno == EINTR))
-      break;
+    if (!(n == -1 && errno == EINTR)) break;
   }
 
-  if (n == -1)
-    pabort();
-  if (n == 0)
-    return 0;
-  return 1;
+  if (n == -1) pabort();
+  if (n == 0) return false;
+  return true;
 }
 
-query::message Channel::peek_query(int fd)
+query::message Channel::peek_query(const int fd)
 {
   uint32_t result = this->read_u32(fd);
   if (result == 0)
@@ -474,7 +465,7 @@ query::message Channel::peek_query(int fd)
   return result;
 }
 
-std::optional<query::data> Channel::read_query(int fd)
+std::optional<query::data> Channel::read_query(const int fd)
 {
   uint32_t tag;
 
@@ -600,7 +591,7 @@ std::optional<query::data> Channel::read_query(int fd)
   // }
 }
 
-void Channel::write_ask(int fd, ask_t *a)
+void Channel::write_ask(const int fd, ask_t *a)
 {
   this->write_u32(fd, a->tag);
   switch (a->tag)
@@ -616,7 +607,7 @@ void Channel::write_ask(int fd, ask_t *a)
 //   write_u32(t, fd, tm.nsec);
 // }
 
-void Channel::write_answer(int fd, const answer::data &a)
+void Channel::write_answer(const int fd, const answer::data &a)
 {
     // if (LOG)
     // {
@@ -650,7 +641,7 @@ void Channel::write_answer(int fd, const answer::data &a)
     }, a);
 }
 
-void Channel::flush(int fd)
+void Channel::flush(const int fd)
 {
   this->cflush(fd);
 }
@@ -661,9 +652,8 @@ void Channel::reset()
   this->output.pos = 0;
 }
 
-void *Channel::get_buffer(size_t n)
+void *Channel::get_buffer(const size_t n)
 {
-  while (n > this->buf_size)
-    this->resize_buf();
+  while (n > this->buf_size) this->resize_buf();
   return this->buf;
 }

@@ -214,15 +214,15 @@ struct Channel
 {
   struct {
     char buffer[BUF_SIZE];
-    int pos, len;
+    size_t pos, len;
   } input;
   struct {
     char buffer[BUF_SIZE];
-    int pos;
+    size_t pos;
   } output;
   int passed_fd;
   char *buf;
-  int buf_size;
+  size_t buf_size;
   Channel();
   ~Channel();
   bool handshake(int fd);
@@ -237,11 +237,11 @@ struct Channel
 
 private:
   ssize_t read_(int fd, void *data, size_t len);
-  bool read_all(int fd, char *buf, int size);
+  bool read_all(int fd, char *buf, ssize_t size);
   void cflush(int fd);
   bool refill_at_least(int fd, int at_least);
   void resize_buf();
-  int cgetc(int fd);
+  char cgetc(int fd);
   int read_zstr(int fd, int *pos);
   bool read_bytes(int fd, int pos, int size);
   void write_bytes(int fd, void *buf, int size);
