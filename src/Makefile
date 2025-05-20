@@ -37,7 +37,7 @@ re2c:
 $(DIR)/json_parser.o: json_parser.c
 	$(CC) -c -o $@ -Idvi/ $<
 
-$(DIR)/%.o: %.c
+$(DIR)/%.o: %.cpp
 	$(CXX) -c -o $@ -Idvi/ $<
 
 $(DIR)/libmydvi.a: $(wildcard dvi/*.*)
