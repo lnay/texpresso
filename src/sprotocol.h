@@ -229,7 +229,7 @@ struct Channel
   Channel();
   ~Channel();
   bool handshake(int fd);
-  bool has_pending_query(int fd, int timeout);
+  bool has_pending_query(int fd, int timeout) const;
   std::optional<query::data> read_query(int fd);
   query::message peek_query(int fd);
   void write_ask(int fd, ask_t *a);
@@ -246,12 +246,11 @@ private:
   void resize_buf();
   char cgetc(int fd);
   int read_zstr(int fd, int *pos);
-  bool read_bytes(int fd, int pos, int size);
+  bool read_bytes(int fd, size_t pos, size_t size);
   void write_bytes(int fd, void *buf, int size);
-  bool try_read_u32(int fd, uint32_t *tag);
   template<typename T> T read_item(int fd);
-  void write_u32(int fd, uint32_t u);
-  void write_f32(int fd, float f);
+  template<typename T> std::optional<T> try_read_item(int fd);
+  template<typename T> void write_item(int fd, T item);
 };
 
 #endif /*!SPROTOCOL_H*/
