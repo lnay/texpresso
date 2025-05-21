@@ -215,6 +215,21 @@ typedef struct {
 
 struct Channel
 {
+  Channel();
+  ~Channel();
+  bool handshake(int fd);
+  bool has_pending_query(int timeout) const;
+  std::optional<query::data> read_query();
+  query::message peek_query();
+  void write_ask(int fd, ask_t *a);
+  void write_answer(int fd, const answer::data &a);
+  void *get_buffer(size_t n);
+  void flush(int fd);
+  void reset();
+  void set_fd(int fd);
+
+private:
+  std::optional<file_id> fd;
   struct {
     char buffer[BUF_SIZE];
     size_t pos, len;
@@ -226,31 +241,24 @@ struct Channel
   int passed_fd;
   char *buf;
   size_t buf_size;
-  Channel();
-  ~Channel();
-  bool handshake(int fd);
-  bool has_pending_query(int fd, int timeout) const;
-  std::optional<query::data> read_query(int fd);
-  query::message peek_query(int fd);
-  void write_ask(int fd, ask_t *a);
-  void write_answer(int fd, const answer::data &a);
-  void *get_buffer(size_t n);
-  void flush(int fd);
-  void reset();
 
-private:
-  ssize_t read_(int fd, void *data, size_t len);
-  bool read_all(int fd, char *buf, ssize_t size);
-  void cflush(int fd);
-  bool refill_at_least(int fd, int at_least);
-  void resize_buf();
-  char cgetc(int fd);
-  int read_zstr(int fd, int *pos);
-  bool read_bytes(int fd, size_t pos, size_t size);
-  void write_bytes(int fd, void *buf, int size);
+  // reading
+  bool read_bytes(size_t pos, size_t size);
+  int read_zstr(int *pos);
   template<typename T> T read_item(int fd);
   template<typename T> std::optional<T> try_read_item(int fd);
+  // helper
+  char cgetc();
+  size_t read_(int fd, void *data, size_t len);
+  // helper helper
+  bool load_size(int fd, char *buf, ssize_t size);
+  bool load_at_least(int fd, int at_least);
+
+  // writing to fd
+  void cflush(int fd);
   template<typename T> void write_item(int fd, T item);
+  void write_bytes(int fd, void *buf, int size);
+  void resize_buf();
 };
 
 #endif /*!SPROTOCOL_H*/

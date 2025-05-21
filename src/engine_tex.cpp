@@ -239,7 +239,8 @@ static void pop_process(fz_context *ctx, TexEngine *self)
 static std::optional<query::data> read_query(TexEngine *self, Channel *t)
 {
   process_t *p = get_process(self);
-  std::optional<query::data> q = t->read_query(p->fd);
+  t->set_fd(p->fd);
+  std::optional<query::data> q = t->read_query();
   if (!q.has_value()) {
     fprintf(stderr, "[process] terminating process\n");
     close_process(p);
@@ -1021,10 +1022,9 @@ bool txp::TexEngine::step(bool restart_if_needed)
   if (this->get_status() == DOC_RUNNING)
   {
     int fd = get_process(this)->fd;
-    if (fd == -1)
-      return 0;
-    if (!this->c->has_pending_query(fd, 10))
-      return 0;
+    if (fd == -1) return 0;
+    this->c->set_fd(fd);
+    if (!this->c->has_pending_query(10)) return 0;
     try {
       query::data q = read_query(this, this->c).value();
       answer_query(&this->ctx, this, q);
@@ -1172,15 +1172,15 @@ static bool process_pending_messages(fz_context *ctx, TexEngine *self)
   process_t *p = get_process(self);
 
   // If process is dead, nothing has been missed
-  if (p->fd == -1)
-    return 1;
+  if (p->fd == -1) return 1;
+  self->c->set_fd(p->fd);
 
   // Synchronize with the child process:
   // - kill if stuck
   // - check pending SEEN messages to update vision of the process
   int nothing_seen = 1;
   do {
-    if (!self->c->has_pending_query(p->fd, 10))
+    if (!self->c->has_pending_query(10))
     {
       fprintf(stderr, "[kill] worker might be stuck, killing\n");
       // The process hasn't answered in 10ms
@@ -1189,7 +1189,7 @@ static bool process_pending_messages(fz_context *ctx, TexEngine *self)
       break;
     }
     // Process only pending SEEN to have an updated view on process state
-    switch (self->c->peek_query(p->fd))
+    switch (self->c->peek_query())
     {
       case query::Q_SEEN:
         {

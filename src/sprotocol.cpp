@@ -160,7 +160,7 @@ static void write_all(const int fd, const char *buf, int size)
 
 // Read at most `len` amount of data from file descriptor and write to `buf`
 // Return the amount actually read
-ssize_t Channel::read_(const int fd, void *data, const size_t len)
+size_t Channel::read_(const int fd, void *data, const size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
   iovec iov = { .iov_base = data, .iov_len = len };
@@ -225,12 +225,22 @@ ssize_t Channel::read_(const int fd, void *data, const size_t len)
 //   return (buf - org);
 // }
 
+void Channel::set_fd(const file_id fd)
+{
+  if (fd != this->fd )
+  {
+    this->fd = fd;
+    this->input.pos = 0;
+    this->output.pos = 0;
+  }
+}
+
 // Read at `size` amount of data from file descriptor and write to `buf`
-bool Channel::read_all(const int fd, char *buf, ssize_t size)
+bool Channel::load_size(const int fd, char *buf, ssize_t size)
 {
   while (size > 0)
   {
-    const ssize_t n = this->read_(fd, buf, size);
+    const size_t n = this->read_(fd, buf, size);
     if (n == 0) return false;
 
     buf += n;
@@ -254,7 +264,7 @@ void Channel::cflush(const int fd)
 // (which fits within the input buffer).
 //
 // Modifies `input` struct member
-bool Channel::refill_at_least(const int fd, const int at_least)
+bool Channel::load_at_least(const int fd, const int at_least)
 {
   size_t avail = (this->input.len - this->input.pos);
   if (avail >= at_least) return true;
@@ -288,7 +298,7 @@ bool Channel::handshake(const int fd)
 {
   char answer[LEN(HND_CLIENT)];
   write_all(fd, HND_SERVER, LEN(HND_SERVER));
-  if (!this->read_all(fd, answer, LEN(HND_CLIENT))) return true;
+  if (!this->load_size(fd, answer, LEN(HND_CLIENT))) return true;
   this->input.len = this->input.pos = 0;
   this->output.pos = 0;
   return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
@@ -302,6 +312,7 @@ Channel::Channel()
   if (!this->buf) mabort();
   this->buf_size = 256;
   this->passed_fd = -1;
+  this->fd = {};
 }
 
 Channel::~Channel()
@@ -319,26 +330,26 @@ void Channel::resize_buf()
   this->buf_size = new_size;
 }
 
-char Channel::cgetc(const int fd)
+char Channel::cgetc()
 {
-  if ((this->input.pos == this->input.len) && (!this->refill_at_least(fd, 1))) return 0;
+  if ((this->input.pos == this->input.len) && (!this->load_at_least(this->fd.value(), 1))) return 0;
   return this->input.buffer[this->input.pos++];
 }
 
-int Channel::read_zstr(const int fd, int *pos)
+int Channel::read_zstr(int *pos)
 {
   const int p0 = *pos;
   char c;
   do {
     if (*pos == this->buf_size) this->resize_buf();
-    c = this->cgetc(fd);
+    c = this->cgetc();
     this->buf[*pos] = c;
     *pos += 1;
   } while (c != 0);
   return p0;
 }
 
-bool Channel::read_bytes(const int fd, size_t pos, size_t size)
+bool Channel::read_bytes(size_t pos, size_t size)
 {
   while (this->buf_size < pos + size) this->resize_buf();
 
@@ -355,7 +366,7 @@ bool Channel::read_bytes(const int fd, size_t pos, size_t size)
   pos += isize;
   size -= isize;
   this->input.pos = this->input.len = 0;
-  return this->read_all(fd, &this->buf[pos], size);
+  return this->load_size(this->fd.value(), &this->buf[pos], size);
 }
 
 void Channel::write_bytes(const int fd, void *buf, const int size)
@@ -379,7 +390,7 @@ void Channel::write_bytes(const int fd, void *buf, const int size)
 
 template<typename T> std::optional<T> Channel::try_read_item(const int fd)
 {
-  if (!this->refill_at_least(fd, sizeof(T))) return {};
+  if (!this->load_at_least(fd, sizeof(T))) return {};
 
   uint32_t item;
   memcpy(&item, this->input.buffer + this->input.pos, sizeof(T));
@@ -400,7 +411,7 @@ void Channel::write_item(const int fd, T u)
   this->write_bytes(fd, &u, sizeof(T));
 }
 
-bool Channel::has_pending_query(const int fd, int timeout) const
+bool Channel::has_pending_query(int timeout) const
 {
   if (this->input.pos != this->input.len) return true;
 
@@ -408,7 +419,7 @@ bool Channel::has_pending_query(const int fd, int timeout) const
   int n;
   while(true)
   {
-    pfd.fd = fd;
+    pfd.fd = this->fd.value();
     pfd.events = POLLRDNORM;
     pfd.revents = 0;
     n = poll(&pfd, 1, timeout);
@@ -420,16 +431,17 @@ bool Channel::has_pending_query(const int fd, int timeout) const
   return true;
 }
 
-query::message Channel::peek_query(const int fd)
+query::message Channel::peek_query()
 {
-  uint32_t result = this->read_item<uint32_t>(fd);
+  uint32_t result = this->read_item<uint32_t>(this->fd.value());
   if (result == 0) abort();
   this->input.pos -= 4;
   return result;
 }
 
-std::optional<query::data> Channel::read_query(const int fd)
+std::optional<query::data> Channel::read_query()
 {
+  const int fd = this->fd.value();
   const auto opt = this->try_read_item<uint32_t>(fd);
   if (!opt.has_value()) return {};
   const uint32_t tag = opt.value();
@@ -442,8 +454,8 @@ std::optional<query::data> Channel::read_query(const int fd)
     {
         fprintf(stderr, "[info] Reading OPEN");
         const auto fid = this->read_item<file_id>(fd);
-        const int pos_path = this->read_zstr(fd, &pos);
-        const int pos_mode = this->read_zstr(fd, &pos);
+        const int pos_path = this->read_zstr(&pos);
+        const int pos_mode = this->read_zstr(&pos);
 
         query::open op = {
             .fid = fid,
@@ -469,7 +481,7 @@ std::optional<query::data> Channel::read_query(const int fd)
             .pos = this->read_item<uint32_t>(fd),
             .size = this->read_item<uint32_t>(fd),
         };
-        if (!this->read_bytes(fd, 0, wr.size)) return {};
+        if (!this->read_bytes(0, wr.size)) return {};
         wr.buf = this->buf;
         return query::data(time, wr);
     }
@@ -501,7 +513,7 @@ std::optional<query::data> Channel::read_query(const int fd)
     case query::Q_GPIC:
     {
         fprintf(stderr, "[info] Reading GPIC");
-        int pos_path = this->read_zstr(fd, &pos);
+        int pos_path = this->read_zstr(&pos);
         query::gpic gp {
             .path = &this->buf[pos_path],
             .type = this->read_item<file_id>(fd),
@@ -512,7 +524,7 @@ std::optional<query::data> Channel::read_query(const int fd)
     case query::Q_SPIC:
     {
         fprintf(stderr, "[info] Reading SPIC");
-        int pos_path = this->read_zstr(fd, &pos);
+        int pos_path = this->read_zstr(&pos);
         query::spic sp {
             .path = &this->buf[pos_path],
             .cache = {
