@@ -33,8 +33,6 @@
 #include <variant>
 #include <optional>
 
-#define PACK(a,b,c,d) ((d << 24) | (c << 16) | (b << 8) | a)
-
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 

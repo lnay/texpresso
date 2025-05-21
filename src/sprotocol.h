@@ -59,7 +59,10 @@ typedef int file_id;
 #define mabort(...) \
   do { fprintf(stderr, "Aborting from " __FILE__ ":" SSTR(__LINE__) "\n" __VA_ARGS__); print_backtrace(); abort(); } while(0)
 
-#define PACK(a,b,c,d) ((d << 24) | (c << 16) | (b << 8) | a)
+constexpr uint32_t PACK(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
+{
+  return (d << 24) | (c << 16) | (b << 8) | a;
+}
 
 /* QUERIES */
 
