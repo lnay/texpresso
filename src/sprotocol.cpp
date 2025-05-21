@@ -158,10 +158,117 @@ static void write_all(const int fd, const char *buf, int size)
   }
 }
 
+bool Channel::Input::load_()
+{
+  const file_id fd = this->fd;
+  char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
+  iovec iov = { .iov_base = this->buffer + this->len, .iov_len = BUF_SIZE - this->len};
+  msghdr msg = {
+    .msg_iov = &iov, .msg_iovlen = 1,
+    .msg_controllen = sizeof(msg_control),
+  };
+  msg.msg_control = &msg_control;
+
+  ssize_t recvd;
+  do { recvd = recvmsg(fd, &msg, 0); }
+  while (recvd == -1 && errno == EINTR);
+
+  if (recvd == -1)
+  {
+    if (errno == ECONNRESET)
+    {
+      fprintf(stderr, "sprotocol:read_: ECONNRESET\n");
+      fflush(stderr);
+      return 0;
+    }
+    perror("recvmsg");
+    mabort();
+  }
+
+  cmsghdr *cm = CMSG_FIRSTHDR(&msg);
+
+  if (cm != nullptr)
+  {
+    const int *fds0 = (int*)CMSG_DATA(cm);
+    const int nfds = (cm->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+
+    if (nfds != 1) abort();
+
+    if (this->passed_fd != -1) abort();
+    //close(t->passed_fd);
+    this->passed_fd = fds0[0];
+  }
+
+  this->len += recvd;
+  return recvd != 0;
+}
+
+void Channel::Input::empty()
+{
+  this->pos = 0;
+  this->len = 0;
+}
+
+char Channel::Input::getc()
+{
+  if ((this->pos == this->len) && (!this->load_at_least(1))) return 0;
+  return this->buffer[this->pos++];
+}
+
+void Channel::Input::trim_read()
+{
+  size_t avail = (this->len - this->pos);
+  memmove(this->buffer, this->buffer + this->pos, avail);
+  this->pos = 0;
+  this->len = avail;
+}
+
+// Load at least `at_least` bytes of data from `fd` ahead of the
+// position `pos`, trimming already read data if necessary to make
+// space
+bool Channel::Input::load_at_least(const size_t at_least)
+{
+  if (this->len >= this->pos + at_least) return true;
+
+  // Drop already read buffer content if not enough space in remainder of
+  // buffer
+  if (BUF_SIZE < this->pos + at_least ) this->trim_read();
+
+  // Read from file until enough content is in the input buffer
+  while (this->len < this->pos + at_least)
+  {
+    if (!this->load_()) return false;
+  }
+  return true;
+}
+
+template<typename T>
+std::optional<T> Channel::Input::read_item()
+{
+  // this could be optimised like it was before to load_ straight into
+  // `out` if the necessary content is not all currently already loaded
+  // into the input buffer
+  if (!this->load_at_least(sizeof(T))) return {};
+  T out = *((T*)(this->buffer + this->pos));
+  this->pos += sizeof(T);
+  return out;
+}
+
+template<typename T>
+std::optional<T> Channel::Input::peek_item()
+{
+  // this could be optimised like it was before to load_ straight into
+  // `out` if the necessary content is not all currently already loaded
+  // into the input buffer
+  if (!this->load_at_least(sizeof(T))) return {};
+  return *((T*)(this->buffer + this->pos));
+}
+
 // Read at most `len` amount of data from file descriptor and write to `buf`
 // Return the amount actually read
-size_t Channel::read_(const int fd, void *data, const size_t len)
+size_t Channel::load_(void *data, const size_t len)
 {
+  const file_id fd = this->fd.value();
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
   iovec iov = { .iov_base = data, .iov_len = len };
   msghdr msg = {
@@ -232,15 +339,17 @@ void Channel::set_fd(const file_id fd)
     this->fd = fd;
     this->input.pos = 0;
     this->output.pos = 0;
+    this->input.fd = fd;
+    this->output.fd = fd;
   }
 }
 
 // Read at `size` amount of data from file descriptor and write to `buf`
-bool Channel::load_size(const int fd, char *buf, ssize_t size)
+bool Channel::load_size(char *buf, ssize_t size)
 {
   while (size > 0)
   {
-    const size_t n = this->read_(fd, buf, size);
+    const size_t n = this->load_(buf, size);
     if (n == 0) return false;
 
     buf += n;
@@ -263,8 +372,8 @@ void Channel::cflush(const int fd)
 // This function eagerly reads data at each opportunity
 // (which fits within the input buffer).
 //
-// Modifies `input` struct member
-bool Channel::load_at_least(const int fd, const int at_least)
+// Modifies `input` struct member loading content ahead of pos
+bool Channel::load_at_least(const int at_least)
 {
   size_t avail = (this->input.len - this->input.pos);
   if (avail >= at_least) return true;
@@ -276,7 +385,7 @@ bool Channel::load_at_least(const int fd, const int at_least)
   // Read from file until enough content is in the input buffer
   while (avail < at_least)
   {
-    const ssize_t n = this->read_(fd, this->input.buffer + avail, BUF_SIZE - avail);
+    const ssize_t n = this->load_(this->input.buffer + avail, BUF_SIZE - avail);
     if (n == 0)
     {
       this->input.len = avail;
@@ -294,11 +403,11 @@ bool Channel::load_at_least(const int fd, const int at_least)
 #define HND_SERVER "TEXPRESSOS01"
 #define HND_CLIENT "TEXPRESSOC01"
 
-bool Channel::handshake(const int fd)
+bool Channel::handshake()
 {
   char answer[LEN(HND_CLIENT)];
-  write_all(fd, HND_SERVER, LEN(HND_SERVER));
-  if (!this->load_size(fd, answer, LEN(HND_CLIENT))) return true;
+  write_all(this->fd.value(), HND_SERVER, LEN(HND_SERVER));
+  if (!this->load_size(answer, LEN(HND_CLIENT))) return true;
   this->input.len = this->input.pos = 0;
   this->output.pos = 0;
   return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
@@ -332,21 +441,22 @@ void Channel::resize_buf()
 
 char Channel::cgetc()
 {
-  if ((this->input.pos == this->input.len) && (!this->load_at_least(this->fd.value(), 1))) return 0;
+  if ((this->input.pos == this->input.len) && (!this->load_at_least(1))) return 0;
   return this->input.buffer[this->input.pos++];
 }
 
-int Channel::read_zstr(int *pos)
+// Move position on buf forwards past the zero terminated string and return
+// the position of the string just moved past (copy of the initial pos)
+char* Channel::read_zstr()
 {
-  const int p0 = *pos;
+  char* out = this->buf + this->buf_pos;
   char c;
   do {
-    if (*pos == this->buf_size) this->resize_buf();
-    c = this->cgetc();
-    this->buf[*pos] = c;
-    *pos += 1;
-  } while (c != 0);
-  return p0;
+    if (this->buf_pos == this->buf_size) this->resize_buf();
+    c = this->input.getc();
+    this->buf[this->buf_pos++] = c;
+  } while (c != NULL);
+  return out;
 }
 
 bool Channel::read_bytes(size_t pos, size_t size)
@@ -366,7 +476,7 @@ bool Channel::read_bytes(size_t pos, size_t size)
   pos += isize;
   size -= isize;
   this->input.pos = this->input.len = 0;
-  return this->load_size(this->fd.value(), &this->buf[pos], size);
+  return this->load_size(&this->buf[pos], size);
 }
 
 void Channel::write_bytes(const int fd, void *buf, const int size)
@@ -388,21 +498,15 @@ void Channel::write_bytes(const int fd, void *buf, const int size)
   }
 }
 
-template<typename T> std::optional<T> Channel::try_read_item(const int fd)
+template<typename T> std::optional<T> Channel::try_read_item()
 {
-  if (!this->load_at_least(fd, sizeof(T))) return {};
-
-  uint32_t item;
-  memcpy(&item, this->input.buffer + this->input.pos, sizeof(T));
-  this->input.pos += sizeof(T);
-
-  return item;
+  return this->input.read_item<T>();
 }
 
 template<typename T>
-T Channel::read_item(const int fd)
+T Channel::read_item()
 {
-  return this->try_read_item<T>(fd).value();
+  return this->input.read_item<T>().value();
 }
 
 template<typename T>
@@ -433,34 +537,26 @@ bool Channel::has_pending_query(int timeout) const
 
 query::message Channel::peek_query()
 {
-  uint32_t result = this->read_item<uint32_t>(this->fd.value());
-  if (result == 0) abort();
-  this->input.pos -= 4;
-  return result;
+  return this->input.peek_item<query::message>().value();
 }
 
 std::optional<query::data> Channel::read_query()
 {
-  const int fd = this->fd.value();
-  const auto opt = this->try_read_item<uint32_t>(fd);
+  const auto opt = this->input.read_item<uint32_t>();
   if (!opt.has_value()) return {};
   const uint32_t tag = opt.value();
-  const int time = this->read_item<int32_t>(fd);
-  int pos = 0;
+  const int time = this->read_item<int32_t>();
+  this->buf_pos = 0;
   static_assert(sizeof(uint32_t) == sizeof(file_id));
   switch (tag)
   {
     case query::Q_OPEN:
     {
         fprintf(stderr, "[info] Reading OPEN");
-        const auto fid = this->read_item<file_id>(fd);
-        const int pos_path = this->read_zstr(&pos);
-        const int pos_mode = this->read_zstr(&pos);
-
         query::open op = {
-            .fid = fid,
-            .path = &this->buf[pos_path],
-            .mode = &this->buf[pos_mode],
+            .fid = this->read_item<file_id>(),
+            .path = this->read_zstr(),
+            .mode = this->read_zstr(),
         };
         return query::data(time, op);
     }
@@ -468,18 +564,18 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading READ");
         return query::data(time, query::read {
-            .fid = this->read_item<file_id>(fd),
-            .pos = this->read_item<uint32_t>(fd),
-            .size = this->read_item<uint32_t>(fd),
+            .fid = this->read_item<file_id>(),
+            .pos = this->read_item<uint32_t>(),
+            .size = this->read_item<uint32_t>(),
         });
     }
     case query::Q_WRIT:
     {
         fprintf(stderr, "[info] Reading WRIT");
         query::writ wr {
-            .fid = this->read_item<uint32_t>(fd),
-            .pos = this->read_item<uint32_t>(fd),
-            .size = this->read_item<uint32_t>(fd),
+            .fid = this->read_item<uint32_t>(),
+            .pos = this->read_item<uint32_t>(),
+            .size = this->read_item<uint32_t>(),
         };
         if (!this->read_bytes(0, wr.size)) return {};
         wr.buf = this->buf;
@@ -489,7 +585,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading CLOS");
         query::clos cl {
-            .fid = this->read_item<file_id>(fd)
+            .fid = this->read_item<file_id>()
         };
         return query::data(time, cl);
     }
@@ -497,7 +593,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading SIZE");
         query::size si {
-            .fid = this->read_item<file_id>(fd)
+            .fid = this->read_item<file_id>()
         };
         return query::data(time, si);
     }
@@ -505,36 +601,34 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading SEEN");
         query::seen se {
-            .fid = this->read_item<file_id>(fd),
-            .pos = this->read_item<file_id>(fd),
+            .fid = this->read_item<file_id>(),
+            .pos = this->read_item<file_id>(),
         };
         return query::data(time, se);
     }
     case query::Q_GPIC:
     {
         fprintf(stderr, "[info] Reading GPIC");
-        int pos_path = this->read_zstr(&pos);
         query::gpic gp {
-            .path = &this->buf[pos_path],
-            .type = this->read_item<file_id>(fd),
-            .page = this->read_item<file_id>(fd),
+            .path = this->read_zstr(),
+            .type = this->read_item<file_id>(),
+            .page = this->read_item<file_id>(),
         };
         return query::data(time, gp);
     }
     case query::Q_SPIC:
     {
         fprintf(stderr, "[info] Reading SPIC");
-        int pos_path = this->read_zstr(&pos);
         query::spic sp {
-            .path = &this->buf[pos_path],
+            .path = this->read_zstr(),
             .cache = {
-                .type = this->read_item<file_id>(fd),
-                .page = this->read_item<file_id>(fd),
+                .type = this->read_item<file_id>(),
+                .page = this->read_item<file_id>(),
                 .bounds = {
-                    this->read_item<float>(fd),
-                    this->read_item<float>(fd),
-                    this->read_item<float>(fd),
-                    this->read_item<float>(fd),
+                    this->read_item<float>(),
+                    this->read_item<float>(),
+                    this->read_item<float>(),
+                    this->read_item<float>(),
                 }
             }
         };
@@ -544,7 +638,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading CHLD");
         query::chld ch {
-            .pid = static_cast<file_id>(this->read_item<uint32_t>(fd)),
+            .pid = static_cast<file_id>(this->read_item<uint32_t>()),
             .fd = this->passed_fd,
         };
         if (ch.fd == -1) abort();

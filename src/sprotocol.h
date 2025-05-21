@@ -217,7 +217,7 @@ struct Channel
 {
   Channel();
   ~Channel();
-  bool handshake(int fd);
+  bool handshake();
   bool has_pending_query(int timeout) const;
   std::optional<query::data> read_query();
   query::message peek_query();
@@ -230,31 +230,53 @@ struct Channel
 
 private:
   std::optional<file_id> fd;
-  struct {
+  int passed_fd;
+  // purely for buffering data from fd, anything before pos
+  // has been read already
+  struct Input {
+    file_id fd;
+    char getc();
+    void empty();
+    template <typename T>
+    std::optional<T> read_item();
+    template <typename T>
+    std::optional<T> peek_item();
+
     char buffer[BUF_SIZE];
     size_t pos, len;
+    int passed_fd;
+
+    bool load_();
+    bool load_at_least(size_t size);
+    void trim_read();
   } input;
   struct {
+    file_id fd;
     char buffer[BUF_SIZE];
     size_t pos;
   } output;
-  int passed_fd;
+
+  // Space to hold data to be pointed to by answer messages
   char *buf;
   size_t buf_size;
+  size_t buf_pos;
 
   // reading
   bool read_bytes(size_t pos, size_t size);
-  int read_zstr(int *pos);
-  template<typename T> T read_item(int fd);
-  template<typename T> std::optional<T> try_read_item(int fd);
+  char* read_zstr();
+  template<typename T> T read_item();
+  template<typename T> std::optional<T> try_read_item();
   // helper
+
   char cgetc();
-  size_t read_(int fd, void *data, size_t len);
   // helper helper
-  bool load_size(int fd, char *buf, ssize_t size);
-  bool load_at_least(int fd, int at_least);
+
+  bool load_size(char *buf, ssize_t size);
+  bool load_at_least(int at_least);
+  size_t load_(void *data, size_t len);
 
   // writing to fd
+
   void cflush(int fd);
   template<typename T> void write_item(int fd, T item);
   void write_bytes(int fd, void *buf, int size);

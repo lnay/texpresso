@@ -208,7 +208,8 @@ static void prepare_process(fz_context *ctx, TexEngine *self)
                           bundle_server_lock(self->bundle),
                           &p->fd);
     p->trace_len = 0;
-    if (!self->c->handshake(p->fd))
+    self->c->set_fd(p->fd);
+    if (!self->c->handshake())
       mabort();
   }
 }
