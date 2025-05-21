@@ -158,12 +158,13 @@ static void write_all(const int fd, const char *buf, int size)
   }
 }
 
+// Read at most `len` amount of data from file descriptor and write to `buf`
+// Return the amount actually read
 ssize_t Channel::read_(const int fd, void *data, const size_t len)
 {
   char msg_control[CMSG_SPACE(1 * sizeof(int))] = {0,};
-  int32_t pid;
-  struct iovec iov = { .iov_base = data, .iov_len = len };
-  struct msghdr msg = {
+  iovec iov = { .iov_base = data, .iov_len = len };
+  msghdr msg = {
     .msg_iov = &iov, .msg_iovlen = 1,
     .msg_controllen = sizeof(msg_control),
   };
@@ -185,11 +186,11 @@ ssize_t Channel::read_(const int fd, void *data, const size_t len)
     mabort();
   }
 
-  struct cmsghdr *cm = CMSG_FIRSTHDR(&msg);
+  cmsghdr *cm = CMSG_FIRSTHDR(&msg);
 
-  if (cm != NULL)
+  if (cm != nullptr)
   {
-    int *fds0 = (int*)CMSG_DATA(cm);
+    const int *fds0 = (int*)CMSG_DATA(cm);
     int nfds = (cm->cmsg_len - CMSG_LEN(0)) / sizeof(int);
 
     if (nfds != 1) abort();
@@ -224,6 +225,7 @@ ssize_t Channel::read_(const int fd, void *data, const size_t len)
 //   return (buf - org);
 // }
 
+// Read at `size` amount of data from file descriptor and write to `buf`
 bool Channel::read_all(const int fd, char *buf, ssize_t size)
 {
   while (size > 0)
@@ -237,6 +239,7 @@ bool Channel::read_all(const int fd, char *buf, ssize_t size)
   return true;
 }
 
+// Flush content of the Channel's output buffer to the file descriptor
 void Channel::cflush(const int fd)
 {
   const int pos = this->output.pos;
@@ -245,14 +248,22 @@ void Channel::cflush(const int fd)
   this->output.pos = 0;
 }
 
+// Read from file descriptor into the Channel's input buffer until
+// there is at least `at_least` content in front of the position `input.pos`.
+// This function eagerly reads data at each opportunity
+// (which fits within the input buffer).
+//
+// Modifies `input` struct member
 bool Channel::refill_at_least(const int fd, const int at_least)
 {
   size_t avail = (this->input.len - this->input.pos);
   if (avail >= at_least) return true;
 
+  // Shift backwards discarding already read part of Channel input buffer
   memmove(this->input.buffer, this->input.buffer + this->input.pos, avail);
-
   this->input.pos = 0;
+
+  // Read from file until enough content is in the input buffer
   while (avail < at_least)
   {
     const ssize_t n = this->read_(fd, this->input.buffer + avail, BUF_SIZE - avail);
@@ -298,6 +309,7 @@ Channel::~Channel()
   free(this->buf);
 }
 
+// Double the size of the Channel buffer
 void Channel::resize_buf()
 {
   const size_t new_size = this->buf_size * 2;
