@@ -72,8 +72,7 @@ static bool is_more_recent(uint64_t *time, char *candidate)
 
 static void set_more_recent(uint64_t *time, char **result, char *candidate)
 {
-  if (is_more_recent(time, candidate))
-    *result = candidate;
+  if (is_more_recent(time, candidate)) *result = candidate;
 }
 
 static void find_tectonic(char tectonic_path[4096], const char *exec_path)
@@ -154,28 +153,26 @@ static int repaint_on_resize(void *data, SDL_Event *event)
 
 static bool need_advance(fz_context *ctx, ui_state *ui)
 {
-  int need = send(page_count, ui->eng) <= ui->page;
+  int need = ui->eng->page_count() <= ui->page;
 
   if (!need)
   {
     fz_buffer *buf;
-    synctex_t *stx = send(synctex, ui->eng, &buf);
+    synctex_t *stx = ui->eng->synctex(&buf);
     need =
       (ui->need_synctex && synctex_page_count(stx) <= ui->page) ||
       synctex_has_target(stx);
   }
 
-  return (need && send(get_status, ui->eng) == DOC_RUNNING);
+  return (need && ui->eng->get_status() == DOC_RUNNING);
 }
 
 static bool advance_engine(fz_context *ctx, ui_state *ui)
 {
   bool need = need_advance(ctx, ui);
-  if (!need && ui->advancing)
-    editor_flush();
+  if (!need && ui->advancing) editor_flush();
   ui->advancing = need;
-  if (!need)
-    return false;
+  if (!need) return false;
 
   struct timespec start;
   clock_gettime(CLOCK_MONOTONIC, &start);
@@ -183,8 +180,7 @@ static bool advance_engine(fz_context *ctx, ui_state *ui)
   int steps = 10;
   while (need)
   {
-    if (!send(step, ui->eng, false))
-      break;
+    if (!ui->eng->step(false)) break;
 
     steps -= 1;
     need = need_advance(ctx, ui);
@@ -200,8 +196,7 @@ static bool advance_engine(fz_context *ctx, ui_state *ui)
         (curr.tv_sec - start.tv_sec) * 1000 * 1000 * 1000 +
         (curr.tv_nsec - start.tv_nsec);
 
-      if (delta > 5000000)
-        break;
+      if (delta > 5000000) break;
     }
   }
   return need;
@@ -252,11 +247,11 @@ static void ui_mouse_down(struct persistent_state *ps, ui_state *ui, int x, int 
       ui->last_click_ticks = ticks;
 
       fz_buffer *buf;
-      synctex_t *stx = send(synctex, ui->eng, &buf);
+      synctex_t *stx = ui->eng->synctex(&buf);
       if (stx && buf)
       {
         fz_point pt = txp_renderer_screen_to_document(ps->ctx, ui->doc_renderer, p);
-        float f = 1 / send(scale_factor, ui->eng);
+        float f = 1 / ui->eng->scale_factor();
         // pt.x -= 72;
         // pt.y -= 72;
         fprintf(stderr, "click: (%f,%f) mapped:(%f,%f)\n",
@@ -283,8 +278,7 @@ static void ui_mouse_move(fz_context *ctx, ui_state *ui, int x, int y)
   fz_point scale = get_scale_factor(ui->window);
   switch (ui->mouse_status)
   {
-    case UI_MOUSE_NONE:
-      break;
+    case UI_MOUSE_NONE: break;
 
     case UI_MOUSE_SELECT:
     {
@@ -317,8 +311,7 @@ static void ui_mouse_wheel(fz_context *ctx, ui_state *ui, float dx, float dy, in
 {
   fz_point scale = get_scale_factor(ui->window);
 
-  if (ui->mouse_status != UI_MOUSE_NONE)
-    return;
+  if (ui->mouse_status != UI_MOUSE_NONE) return;
 
   txp_renderer_config *config = txp_renderer_get_config(ctx, ui->doc_renderer);
 
@@ -439,14 +432,14 @@ static void pan_to(fz_context *ctx, ui_state *ui, enum pan_to to)
 
 static void previous_page(fz_context *ctx, ui_state *ui, bool pan)
 {
-  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0);
+  synctex_set_target(ui->eng->synctex(__null), 0, NULL, 0);
   if (ui->page > 0)
   {
     ui->page -= 1;
 
-    int page_count = send(page_count, ui->eng);
+    int page_count = ui->eng->page_count();
     if (page_count > 0 && ui->page >= page_count &&
-        send(get_status, ui->eng) == DOC_TERMINATED)
+        ui->eng->get_status() == DOC_TERMINATED)
       ui->page = page_count - 1;
 
     // FIXME: technically, this is slightly incorrect.
@@ -462,11 +455,10 @@ static void previous_page(fz_context *ctx, ui_state *ui, bool pan)
 
 static void next_page(fz_context *ctx, ui_state *ui, bool pan)
 {
-  synctex_set_target(send(synctex, ui->eng, NULL), 0, NULL, 0);
+  synctex_set_target(ui->eng->synctex(__null), 0, NULL, 0);
   ui->page += 1;
   // FIXME: Same remark as in previous_page.
-  if (pan)
-    pan_to(ctx, ui, PAN_TO_TOP);
+  if (pan) pan_to(ctx, ui, PAN_TO_TOP);
   schedule_event(RELOAD_EVENT);
 }
 
@@ -608,8 +600,7 @@ static int utf16_to_utf8_index(const uint8_t *utf8, size_t utf8_len, size_t utf1
                       ? (utf16_count == utf16_pos + 2 ? 4 : 2)
                       : 1);
     }
-    if (byte == '\n')
-      return -1;
+    if (byte == '\n') return -1;
   }
   return -1;  // position out of bounds
 }
@@ -641,10 +632,8 @@ static int utf8_index_to_offset(const uint8_t *utf8, size_t boundary_offset, siz
       // 4-byte UTF-8 character
       offset += 4;
     }
-    if (byte == '\n')
-      return -1; // these operations are intended to only run on a single line
-    if (offset >= boundary_offset)
-      return -1; // out of bounds
+    if (byte == '\n') return -1; // these operations are intended to only run on a single line
+    if (offset >= boundary_offset) return -1; // out of bounds
   }
   return offset;
 }
@@ -661,7 +650,7 @@ static void realize_change(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, path);
+  fileentry_t *e = ui->eng->find_file(path);
   if (!e)
   {
     fprintf(stderr, "[command] change %s: file not found, skipping\n", path);
@@ -727,8 +716,7 @@ static void realize_change(struct persistent_state *ps,
 
     while (line > 0 && offset < len)
     {
-      if (p[offset] == '\n')
-        line -= 1;
+      if (p[offset] == '\n') line -= 1;
       offset++;
     }
 
@@ -757,8 +745,7 @@ static void realize_change(struct persistent_state *ps,
 
     while (line > 0 && remove < len)
     {
-      if (p[remove] == '\n')
-        line -= 1;
+      if (p[remove] == '\n') line -= 1;
       remove++;
     }
 
@@ -796,7 +783,7 @@ static void realize_change(struct persistent_state *ps,
   memmove(b->data + offset, op->data, length);
 
   fprintf(stderr, "[command] change %s: changed offset %d\n", path, offset);
-  send(notify_file_changes, ui->eng, e, offset);
+  ui->eng->notify_file_changes(e, offset);
 }
 
 #define BUFFERED_OPS 64
@@ -830,11 +817,11 @@ static void interpret_change(struct persistent_state *ps,
                              struct editor_change *op)
 {
   int plen = strlen(op->path);
-  int page_count = send(page_count, ui->eng);
+  int page_count = ui->eng->page_count();
   int cursor = delayed_changes.cursor;
 
   if ((page_count == ui->page - 2 || page_count == ui->page - 1) &&
-      send(get_status, ui->eng) == DOC_RUNNING &&
+      ui->eng->get_status() == DOC_RUNNING &&
       delayed_changes.count < BUFFERED_OPS &&
       cursor + plen + 1 + op->length <= BUFFERED_CHARS)
   {
@@ -872,7 +859,7 @@ static void interpret_open(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, path);
+  fileentry_t *e = ui->eng->find_file(path);
   if (!e)
   {
     fprintf(stderr, "[command] open %s: file not found, skipping\n", path);
@@ -903,7 +890,7 @@ static void interpret_open(struct persistent_state *ps,
   if (changed >= 0)
   {
     fprintf(stderr, "[command] open %s: changed offset is %d\n", path, changed);
-    send(notify_file_changes, ui->eng, e, changed);
+    ui->eng->notify_file_changes(e, changed);
   }
 }
 
@@ -919,7 +906,7 @@ static void interpret_close(struct persistent_state *ps,
     return;
   }
 
-  fileentry_t *e = send(find_file, ui->eng, path);
+  fileentry_t *e = ui->eng->find_file(path);
   if (!e)
   {
     fprintf(stderr, "[command] close %s: file not found, skipping\n", path);
@@ -945,7 +932,7 @@ static void interpret_close(struct persistent_state *ps,
   fprintf(stderr, "[command] close %s: closing, changed offset %d\n", path,
           changed);
 
-  send(notify_file_changes, ui->eng, e, changed);
+  ui->eng->notify_file_changes(e, changed);
 }
 
 static uint32_t convert_color(fz_context *ctx, vstack *stack, float frgb[3])
@@ -960,7 +947,7 @@ static uint32_t convert_color(fz_context *ctx, vstack *stack, float frgb[3])
 
 static void display_page(struct persistent_state *ps, ui_state *ui)
 {
-  fz_display_list *dl = send(render_page, ui->eng, ui->page);
+  fz_display_list *dl = ui->eng->render_page(ui->page);
   txp_renderer_set_contents(ps->ctx, ui->doc_renderer, dl);
   fz_drop_display_list(ps->ctx, dl);
   schedule_event(RENDER_EVENT);
@@ -1070,7 +1057,7 @@ static void interpret_command(struct persistent_state *ps,
     case EDIT_SYNCTEX_FORWARD:
     {
       fz_buffer *buf;
-      synctex_t *stx = send(synctex, ui->eng, &buf);
+      synctex_t *stx = ui->eng->synctex(&buf);
       int go_up = 0;
       const char *path = relative_path(cmd.synctex_forward.path, ps->doc_path, &go_up);
       if (go_up > 0)
@@ -1121,8 +1108,7 @@ bool texpresso_main(struct persistent_state *ps)
   const char *doc_ext = NULL;
 
   for (const char *ptr = ps->doc_name; *ptr; ptr++)
-    if (*ptr == '.')
-      doc_ext = ptr + 1;
+    if (*ptr == '.') doc_ext = ptr + 1;
 
   char tectonic_path[4096];
   find_tectonic(tectonic_path, ps->exe_path);
@@ -1162,7 +1148,7 @@ bool texpresso_main(struct persistent_state *ps)
   ui->last_click_ticks = SDL_GetTicks() - 200000000;
 
   bool quit = 0, reload = 0;
-  send(step, ui->eng, true);
+  ui->eng->step(true);
   render(ps->ctx, ui);
   schedule_event(RELOAD_EVENT);
 
@@ -1191,7 +1177,7 @@ bool texpresso_main(struct persistent_state *ps)
     bool has_event = SDL_PollEvent(&e);
 
     // Process stdin
-    send(begin_changes, ui->eng);
+    ui->eng->begin_changes();
     char buffer[4096];
     int n = -1;
     while (!stdin_eof && poll_stdin() && (n = read(STDIN_FILENO, buffer, 4096)) != 0)
@@ -1230,17 +1216,17 @@ bool texpresso_main(struct persistent_state *ps)
     }
     if (n == 0) stdin_eof = 1;
 
-    if (send(end_changes, ui->eng))
+    if (ui->eng->end_changes())
     {
-      send(step, ui->eng, true);
+      ui->eng->step(true);
       schedule_event(RELOAD_EVENT);
     }
 
     // Process document
     {
-      int before_page_count = send(page_count, ui->eng);
+      int before_page_count = ui->eng->page_count();
       bool advance = advance_engine(ps->ctx, ui);
-      int after_page_count = send(page_count, ui->eng);
+      int after_page_count = ui->eng->page_count();
       fflush(stdout);
 
       if (ui->page >= before_page_count && ui->page < after_page_count)
@@ -1248,8 +1234,7 @@ bool texpresso_main(struct persistent_state *ps)
 
       if (!has_event)
       {
-        if (advance)
-          continue;
+        if (advance) continue;
         if (!stdin_eof)
           wakeup_poll_thread(poll_stdin_pipe, 'c');
         has_event = SDL_WaitEvent(&e);
@@ -1261,7 +1246,7 @@ bool texpresso_main(struct persistent_state *ps)
       }
 
       fz_buffer *buf;
-      synctex_t *stx = send(synctex, ui->eng, &buf);
+      synctex_t *stx = ui->eng->synctex(&buf);
       int page = -1, x = -1, y = -1;
       if (synctex_find_target(ps->ctx, stx, buf, &page, &x, &y))
       {
@@ -1275,7 +1260,7 @@ bool texpresso_main(struct persistent_state *ps)
         }
 
         // FIXME: Scroll to point
-        float f = send(scale_factor, ui->eng);
+        float f = ui->eng->scale_factor();
         fz_point p = fz_make_point(f * x, f * y);
         fz_point pt = txp_renderer_document_to_screen(ps->ctx, ui->doc_renderer, p);
         fprintf(stderr, "[synctex forward] position on screen: (%.02f, %.02f)\n",
@@ -1441,31 +1426,31 @@ bool texpresso_main(struct persistent_state *ps)
             quit = reload = 1;
             continue;
           }
-          send(begin_changes, ui->eng);
+          ui->eng->begin_changes();
           flush_changes(ps, ui);
-          send(detect_changes, ui->eng);
-          if (send(end_changes, ui->eng))
+          ui->eng->detect_changes();
+          if (ui->eng->end_changes())
           {
-            send(step, ui->eng, true);
+            ui->eng->step(true);
             schedule_event(RELOAD_EVENT);
           }
           break;
 
         case RENDER_EVENT:
           render(ps->ctx, ui);
-          send(begin_changes, ui->eng);
+          ui->eng->begin_changes();
           flush_changes(ps, ui);
-          if (send(end_changes, ui->eng))
+          if (ui->eng->end_changes())
           {
-            send(step, ui->eng, true);
+            ui->eng->step(true);
             schedule_event(RELOAD_EVENT);
           }
           break;
 
         case RELOAD_EVENT:
-          page_count = send(page_count, ui->eng);
+          page_count = ui->eng->page_count();
           if (ui->page >= page_count &&
-              send(get_status, ui->eng) == DOC_TERMINATED)
+              ui->eng->get_status() == DOC_TERMINATED)
           {
             if (page_count > 0)
               ui->page = page_count - 1;
