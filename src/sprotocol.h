@@ -119,8 +119,7 @@ namespace query {
 
     using dataa = std::variant<open, read, writ, clos, size, seen, chld, gpic, spic>;
 
-    struct data : public std::variant<open, read, writ, clos, size, seen, chld, gpic, spic> {
-        public:
+    struct data : std::variant<open, read, writ, clos, size, seen, chld, gpic, spic> {
         int time;
         message to_enum();
         void log(FILE *f);
@@ -197,7 +196,7 @@ enum ask {
 };
 
 typedef struct {
-  enum ask tag;
+  ask tag;
   union {
     struct {
       int pid;
@@ -229,10 +228,9 @@ struct Channel
   void set_fd(int fd);
 
 private:
+  // Specifies socket being read/written to
   std::optional<file_id> fd;
   int passed_fd;
-  // purely for buffering data from fd, anything before pos
-  // has been read already
   struct Input {
     file_id fd;
     char getc();
@@ -242,10 +240,12 @@ private:
     template <typename T>
     std::optional<T> peek_item();
 
-    char buffer[BUF_SIZE];
+    // purely for buffering data from fd, anything before pos
+    // has been read already
     size_t pos, len;
+    char buffer[BUF_SIZE];
+  private:
     int passed_fd;
-
     bool load_();
     bool load_at_least(size_t size);
     void trim_read();
@@ -256,23 +256,23 @@ private:
     size_t pos;
   } output;
 
-  // Space to hold data to be pointed to by answer messages
+  // Space to hold data to be used outside this class
   char *buf;
   size_t buf_size;
   size_t buf_pos;
 
-  // reading
+  // Loads next `size` bytes from `fd` in the buffer and returns a reference
+  // to it
   std::optional<char*> read_bytes(size_t size);
+  // Loads next null terminated string from `fd` in the buffer and returns
+  // a reference to it
   char* read_zstr();
-  // helper
 
-  // helper helper
-
+  // TODO work these into Input which incorporates part of the code in `read_bytes`
   bool load_size(char *buf, ssize_t size);
-  bool load_at_least(int at_least);
   size_t load_(void *data, size_t len);
 
-  // writing to fd
+  // Writing to socket
 
   void cflush(int fd);
   template<typename T> void write_item(int fd, T item);

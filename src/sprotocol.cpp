@@ -316,8 +316,6 @@ void Channel::set_fd(const file_id fd)
   if (fd != this->fd )
   {
     this->fd = fd;
-    this->input.pos = 0;
-    this->output.pos = 0;
     this->input.fd = fd;
     this->output.fd = fd;
   }
