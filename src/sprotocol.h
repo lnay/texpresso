@@ -262,13 +262,10 @@ private:
   size_t buf_pos;
 
   // reading
-  bool read_bytes(size_t pos, size_t size);
+  std::optional<char*> read_bytes(size_t size);
   char* read_zstr();
-  template<typename T> T read_item();
-  template<typename T> std::optional<T> try_read_item();
   // helper
 
-  char cgetc();
   // helper helper
 
   bool load_size(char *buf, ssize_t size);

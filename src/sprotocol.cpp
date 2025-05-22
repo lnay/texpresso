@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <variant>
 #include <optional>
+#include <array>
 
 template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
 template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
@@ -310,28 +311,6 @@ size_t Channel::load_(void *data, const size_t len)
   return recvd;
 }
 
-// static int buffered_read_at_least(Channel *t, int fd, char *buf, int atleast, int size)
-// {
-//   int n;
-//   char *org = buf, *ok = buf + atleast;
-//   if (size < atleast) abort();
-//
-//   while (1)
-//   {
-//     n = t->read_(fd, buf, size);
-//     if (n == -1)
-//       pabort();
-//     else if (n == 0)
-//       return 0;
-//
-//     buf += n;
-//     size -= n;
-//     if (buf >= ok)
-//       break;
-//   }
-//   return (buf - org);
-// }
-
 void Channel::set_fd(const file_id fd)
 {
   if (fd != this->fd )
@@ -367,37 +346,6 @@ void Channel::cflush(const int fd)
   this->output.pos = 0;
 }
 
-// Read from file descriptor into the Channel's input buffer until
-// there is at least `at_least` content in front of the position `input.pos`.
-// This function eagerly reads data at each opportunity
-// (which fits within the input buffer).
-//
-// Modifies `input` struct member loading content ahead of pos
-bool Channel::load_at_least(const int at_least)
-{
-  size_t avail = (this->input.len - this->input.pos);
-  if (avail >= at_least) return true;
-
-  // Shift backwards discarding already read part of Channel input buffer
-  memmove(this->input.buffer, this->input.buffer + this->input.pos, avail);
-  this->input.pos = 0;
-
-  // Read from file until enough content is in the input buffer
-  while (avail < at_least)
-  {
-    const ssize_t n = this->load_(this->input.buffer + avail, BUF_SIZE - avail);
-    if (n == 0)
-    {
-      this->input.len = avail;
-      return false;
-    }
-    avail += n;
-  }
-
-  this->input.len = avail;
-  return true;
-}
-
 /* HANDSHAKE */
 
 #define HND_SERVER "TEXPRESSOS01"
@@ -405,12 +353,11 @@ bool Channel::load_at_least(const int at_least)
 
 bool Channel::handshake()
 {
-  char answer[LEN(HND_CLIENT)];
   write_all(this->fd.value(), HND_SERVER, LEN(HND_SERVER));
-  if (!this->load_size(answer, LEN(HND_CLIENT))) return true;
-  this->input.len = this->input.pos = 0;
+  this->input.empty();
+  auto answer = this->input.read_item<std::array<char, 12>>();
   this->output.pos = 0;
-  return (strncmp(HND_CLIENT, answer, LEN(HND_CLIENT)) == 0);
+  return (strncmp(HND_CLIENT, answer.value().data(), LEN(HND_CLIENT)) == 0);
 }
 
 /* PROTOCOL DEFINITION */
@@ -439,12 +386,6 @@ void Channel::resize_buf()
   this->buf_size = new_size;
 }
 
-char Channel::cgetc()
-{
-  if ((this->input.pos == this->input.len) && (!this->load_at_least(1))) return 0;
-  return this->input.buffer[this->input.pos++];
-}
-
 // Move position on buf forwards past the zero terminated string and return
 // the position of the string just moved past (copy of the initial pos)
 char* Channel::read_zstr()
@@ -459,24 +400,29 @@ char* Channel::read_zstr()
   return out;
 }
 
-bool Channel::read_bytes(size_t pos, size_t size)
+std::optional<char*> Channel::read_bytes(size_t size)
 {
-  while (this->buf_size < pos + size) this->resize_buf();
+  char* out = this->buf + this->buf_pos;
+  while (this->buf_size < this->buf_pos + size) this->resize_buf();
 
-  const size_t ipos = this->input.pos, ilen = this->input.len;
+  const size_t ipos = this->input.pos;
+  const size_t ilen = this->input.len;
   if (ipos + size <= ilen)
   {
-    memcpy(&this->buf[pos], this->input.buffer + ipos, size);
+    // there is already enough bytes loaded into the input buffer
+    memcpy(this->buf + this->buf_pos, this->input.buffer + ipos, size);
     this->input.pos += size;
-    return 1;
+    return out;
   }
 
+  // there is already enough bytes loaded into the input buffer
   size_t isize = ilen - ipos;
-  memcpy(&this->buf[pos], this->input.buffer + ipos, isize);
-  pos += isize;
+  memcpy(this->buf + this->buf_pos, this->input.buffer + ipos, isize);
+  this->buf_pos += isize;
   size -= isize;
   this->input.pos = this->input.len = 0;
-  return this->load_size(&this->buf[pos], size);
+  if (!this->load_size(this->buf + this->buf_pos, size)) return {};
+  return out;
 }
 
 void Channel::write_bytes(const int fd, void *buf, const int size)
@@ -496,17 +442,6 @@ void Channel::write_bytes(const int fd, void *buf, const int size)
     memcpy(this->output.buffer, buf, size);
     this->output.pos = size;
   }
-}
-
-template<typename T> std::optional<T> Channel::try_read_item()
-{
-  return this->input.read_item<T>();
-}
-
-template<typename T>
-T Channel::read_item()
-{
-  return this->input.read_item<T>().value();
 }
 
 template<typename T>
@@ -545,7 +480,7 @@ std::optional<query::data> Channel::read_query()
   const auto opt = this->input.read_item<uint32_t>();
   if (!opt.has_value()) return {};
   const uint32_t tag = opt.value();
-  const int time = this->read_item<int32_t>();
+  const int time = this->input.read_item<int32_t>().value();
   this->buf_pos = 0;
   static_assert(sizeof(uint32_t) == sizeof(file_id));
   switch (tag)
@@ -554,7 +489,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading OPEN");
         query::open op = {
-            .fid = this->read_item<file_id>(),
+            .fid = this->input.read_item<file_id>().value(),
             .path = this->read_zstr(),
             .mode = this->read_zstr(),
         };
@@ -564,28 +499,34 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading READ");
         return query::data(time, query::read {
-            .fid = this->read_item<file_id>(),
-            .pos = this->read_item<uint32_t>(),
-            .size = this->read_item<uint32_t>(),
+            .fid = this->input.read_item<file_id>().value(),
+            .pos = this->input.read_item<int32_t>().value(),
+            .size = this->input.read_item<int32_t>().value(),
         });
     }
     case query::Q_WRIT:
     {
-        fprintf(stderr, "[info] Reading WRIT");
-        query::writ wr {
-            .fid = this->read_item<uint32_t>(),
-            .pos = this->read_item<uint32_t>(),
-            .size = this->read_item<uint32_t>(),
+      fprintf(stderr, "[info] Reading WRIT");
+      try
+      {
+        int32_t size;
+        query::writ wr{
+          .fid = this->input.read_item<file_id>().value(),
+          .pos = this->input.read_item<int32_t>().value(),
+          .size = size = this->input.read_item<int32_t>().value(),
+          .buf = this->read_bytes(size).value(),
         };
-        if (!this->read_bytes(0, wr.size)) return {};
-        wr.buf = this->buf;
         return query::data(time, wr);
+      } catch (...)
+      {
+        return {};
+      }
     }
     case query::Q_CLOS:
     {
         fprintf(stderr, "[info] Reading CLOS");
         query::clos cl {
-            .fid = this->read_item<file_id>()
+            .fid = this->input.read_item<file_id>().value(),
         };
         return query::data(time, cl);
     }
@@ -593,7 +534,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading SIZE");
         query::size si {
-            .fid = this->read_item<file_id>()
+            .fid = this->input.read_item<file_id>().value(),
         };
         return query::data(time, si);
     }
@@ -601,8 +542,8 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading SEEN");
         query::seen se {
-            .fid = this->read_item<file_id>(),
-            .pos = this->read_item<file_id>(),
+            .fid = this->input.read_item<file_id>().value(),
+            .pos = this->input.read_item<file_id>().value(),
         };
         return query::data(time, se);
     }
@@ -611,8 +552,8 @@ std::optional<query::data> Channel::read_query()
         fprintf(stderr, "[info] Reading GPIC");
         query::gpic gp {
             .path = this->read_zstr(),
-            .type = this->read_item<file_id>(),
-            .page = this->read_item<file_id>(),
+            .type = this->input.read_item<file_id>().value(),
+            .page = this->input.read_item<file_id>().value(),
         };
         return query::data(time, gp);
     }
@@ -622,13 +563,13 @@ std::optional<query::data> Channel::read_query()
         query::spic sp {
             .path = this->read_zstr(),
             .cache = {
-                .type = this->read_item<file_id>(),
-                .page = this->read_item<file_id>(),
+                .type = this->input.read_item<file_id>().value(),
+                .page = this->input.read_item<file_id>().value(),
                 .bounds = {
-                    this->read_item<float>(),
-                    this->read_item<float>(),
-                    this->read_item<float>(),
-                    this->read_item<float>(),
+                    this->input.read_item<float>().value(),
+                    this->input.read_item<float>().value(),
+                    this->input.read_item<float>().value(),
+                    this->input.read_item<float>().value(),
                 }
             }
         };
@@ -638,7 +579,7 @@ std::optional<query::data> Channel::read_query()
     {
         fprintf(stderr, "[info] Reading CHLD");
         query::chld ch {
-            .pid = static_cast<file_id>(this->read_item<uint32_t>()),
+            .pid = this->input.read_item<file_id>().value(),
             .fd = this->passed_fd,
         };
         if (ch.fd == -1) abort();
