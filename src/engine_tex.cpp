@@ -1192,7 +1192,7 @@ static bool process_pending_messages(fz_context *ctx, TexEngine *self)
     // Process only pending SEEN to have an updated view on process state
     switch (self->c->peek_query())
     {
-      case query::Q_SEEN:
+      case query::SEEN:
         {
           try {
             query::data q = read_query(self, self->c).value();

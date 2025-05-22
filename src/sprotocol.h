@@ -68,15 +68,15 @@ constexpr uint32_t PACK(uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 
 namespace query {
     enum message : uint32_t {
-      Q_OPEN = PACK('O','P','E','N'),
-      Q_READ = PACK('R','E','A','D'),
-      Q_WRIT = PACK('W','R','I','T'),
-      Q_CLOS = PACK('C','L','O','S'),
-      Q_SIZE = PACK('S','I','Z','E'),
-      Q_SEEN = PACK('S','E','E','N'),
-      Q_GPIC = PACK('G','P','I','C'),
-      Q_SPIC = PACK('S','P','I','C'),
-      Q_CHLD = PACK('C','H','L','D'),
+      OPEN = PACK('O','P','E','N'),
+      READ = PACK('R','E','A','D'),
+      WRIT = PACK('W','R','I','T'),
+      CLOS = PACK('C','L','O','S'),
+      SIZE = PACK('S','I','Z','E'),
+      SEEN = PACK('S','E','E','N'),
+      GPIC = PACK('G','P','I','C'),
+      SPIC = PACK('S','P','I','C'),
+      CHLD = PACK('C','H','L','D'),
     };
 
     struct open {
@@ -156,13 +156,13 @@ struct stat_answer {
 
 namespace answer {
     enum message : uint32_t {
-        A_DONE = PACK('D','O','N','E'),
-        A_PASS = PACK('P','A','S','S'),
-        A_SIZE = PACK('S','I','Z','E'),
-        A_READ = PACK('R','E','A','D'),
-        A_FORK = PACK('F','O','R','K'),
-        A_OPEN = PACK('O','P','E','N'),
-        A_GPIC = PACK('G','P','I','C'),
+        DONE = PACK('D','O','N','E'),
+        PASS = PACK('P','A','S','S'),
+        SIZE = PACK('S','I','Z','E'),
+        READ = PACK('R','E','A','D'),
+        FORK = PACK('F','O','R','K'),
+        OPEN = PACK('O','P','E','N'),
+        GPIC = PACK('G','P','I','C'),
     };
 
     struct size {

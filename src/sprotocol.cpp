@@ -39,27 +39,27 @@ template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
 query::message query::data::to_enum() {
     return(std::visit(overloaded {
-        [](query::open) { return query::message::Q_OPEN; },
-        [](query::read) { return query::message::Q_READ; },
-        [](query::writ) { return query::message::Q_WRIT; },
-        [](query::clos) { return query::message::Q_CLOS; },
-        [](query::size) { return query::message::Q_SIZE; },
-        [](query::seen) { return query::message::Q_SEEN; },
-        [](query::chld) { return query::message::Q_CHLD; },
-        [](query::gpic) { return query::message::Q_GPIC; },
-        [](query::spic) { return query::message::Q_SPIC; },
+        [](query::open) { return query::message::OPEN; },
+        [](query::read) { return query::message::READ; },
+        [](query::writ) { return query::message::WRIT; },
+        [](query::clos) { return query::message::CLOS; },
+        [](query::size) { return query::message::SIZE; },
+        [](query::seen) { return query::message::SEEN; },
+        [](query::chld) { return query::message::CHLD; },
+        [](query::gpic) { return query::message::GPIC; },
+        [](query::spic) { return query::message::SPIC; },
     }, *this));
 };
 
 answer::message answer::data::to_enum() const {
     return(std::visit(overloaded {
-        [](answer::open) { return answer::message::A_OPEN; },
-        [](answer::read) { return answer::message::A_READ; },
-        [](answer::size) { return answer::message::A_SIZE; },
-        [](answer::gpic) { return answer::message::A_GPIC; },
-        [](answer::done) { return answer::message::A_DONE; },
-        [](answer::pass) { return answer::message::A_PASS; },
-        [](answer::fork) { return answer::message::A_FORK; },
+        [](answer::open) { return answer::message::OPEN; },
+        [](answer::read) { return answer::message::READ; },
+        [](answer::size) { return answer::message::SIZE; },
+        [](answer::gpic) { return answer::message::GPIC; },
+        [](answer::done) { return answer::message::DONE; },
+        [](answer::pass) { return answer::message::PASS; },
+        [](answer::fork) { return answer::message::FORK; },
     }, *this));
 };
 
@@ -67,15 +67,15 @@ const char *query_to_string(query::message q)
 {
   switch (q)
   {
-    case query::Q_OPEN: return "OPEN";
-    case query::Q_READ: return "READ";
-    case query::Q_WRIT: return "WRIT";
-    case query::Q_CLOS: return "CLOS";
-    case query::Q_SIZE: return "SIZE";
-    case query::Q_SEEN: return "SEEN";
-    case query::Q_GPIC: return "GPIC";
-    case query::Q_SPIC: return "SPIC";
-    case query::Q_CHLD: return "CHLD";
+    case query::OPEN: return "OPEN";
+    case query::READ: return "READ";
+    case query::WRIT: return "WRIT";
+    case query::CLOS: return "CLOS";
+    case query::SIZE: return "SIZE";
+    case query::SEEN: return "SEEN";
+    case query::GPIC: return "GPIC";
+    case query::SPIC: return "SPIC";
+    case query::CHLD: return "CHLD";
   }
 }
 
@@ -83,13 +83,13 @@ const char *answer_to_string( answer::message q)
 {
   switch (q)
   {
-    case answer::message::A_DONE: return "DONE";
-    case answer::message::A_PASS: return "PASS";
-    case answer::message::A_SIZE: return "SIZE";
-    case answer::message::A_READ: return "READ";
-    case answer::message::A_FORK: return "FORK";
-    case answer::message::A_OPEN: return "OPEN";
-    case answer::message::A_GPIC: return "GPIC";
+    case answer::message::DONE: return "DONE";
+    case answer::message::PASS: return "PASS";
+    case answer::message::SIZE: return "SIZE";
+    case answer::message::READ: return "READ";
+    case answer::message::FORK: return "FORK";
+    case answer::message::OPEN: return "OPEN";
+    case answer::message::GPIC: return "GPIC";
   }
 }
 
@@ -483,7 +483,7 @@ std::optional<query::data> Channel::read_query()
   static_assert(sizeof(uint32_t) == sizeof(file_id));
   switch (tag)
   {
-    case query::Q_OPEN:
+    case query::OPEN:
     {
         fprintf(stderr, "[info] Reading OPEN");
         query::open op = {
@@ -493,7 +493,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, op);
     }
-    case query::Q_READ:
+    case query::READ:
     {
         fprintf(stderr, "[info] Reading READ");
         return query::data(time, query::read {
@@ -502,7 +502,7 @@ std::optional<query::data> Channel::read_query()
             .size = this->input.read_item<int32_t>().value(),
         });
     }
-    case query::Q_WRIT:
+    case query::WRIT:
     {
       fprintf(stderr, "[info] Reading WRIT");
       try
@@ -520,7 +520,7 @@ std::optional<query::data> Channel::read_query()
         return {};
       }
     }
-    case query::Q_CLOS:
+    case query::CLOS:
     {
         fprintf(stderr, "[info] Reading CLOS");
         query::clos cl {
@@ -528,7 +528,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, cl);
     }
-    case query::Q_SIZE:
+    case query::SIZE:
     {
         fprintf(stderr, "[info] Reading SIZE");
         query::size si {
@@ -536,7 +536,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, si);
     }
-    case query::Q_SEEN:
+    case query::SEEN:
     {
         fprintf(stderr, "[info] Reading SEEN");
         query::seen se {
@@ -545,7 +545,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, se);
     }
-    case query::Q_GPIC:
+    case query::GPIC:
     {
         fprintf(stderr, "[info] Reading GPIC");
         query::gpic gp {
@@ -555,7 +555,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, gp);
     }
-    case query::Q_SPIC:
+    case query::SPIC:
     {
         fprintf(stderr, "[info] Reading SPIC");
         query::spic sp {
@@ -573,7 +573,7 @@ std::optional<query::data> Channel::read_query()
         };
         return query::data(time, sp);
     }
-    case query::Q_CHLD:
+    case query::CHLD:
     {
         fprintf(stderr, "[info] Reading CHLD");
         query::chld ch {
